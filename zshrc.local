@@ -40,7 +40,6 @@ compinit -u
 mkdir -p $HOME/.tmp/Yk/zsh/zsh.local
 
 eval $(zsh_rb)
-
 # users generic .zshrc file for zsh(1)
 
 # System wide functions and aliases
@@ -560,6 +559,7 @@ fi
 def_ruby '
 	def getLVWList
 		require "Yk/path_aux"
+		require "Yk/debug2"
 		require "set"
 		ret = Set.new
 		dids = Hash.new
@@ -579,43 +579,54 @@ def_ruby '
 			dir ||= d
 			if d._d?
 				s = d.stat
-				if ! dids.key? [d.dev, d.ino]
-					dids[[d.dev, d.ino]] = 1
+				if ! dids.key? [s.dev, s.ino]
+					dids[[s.dev, s.ino]] = 1
 					isLogDir = false
-					d.each_entry do |e|
-						if e._d?
-							proc[e, gList.find{_1 == e} || dir]
-						elsif e.basename == "current" || e.basename =~ /^\@[0-9a-f]{24}\.(s|u)$/
-							if ! isLogDir
+					if d._r?
+						d.each_entry do |e|
+							if (e.basename == "current" || e.basename =~ /^\@[0-9a-f]{24}\.(s|u)$/) && e.file_size != 0
 								isLogDir = true
 								rd = d.relative_path_from(dir)
 								if rd == "."
-									if d.basename == "log"
+									if d =~ /\/log$/
 										ret.add d.dirname.basename
+									elsif d =~ /\/log\/main$/
+										ret.add d.dirname.dirname.basename
 									else
 										ret.add d.basename
 									end
 								else
 									ret.add rd
 								end
+								break
 							end
-						else
-							fProc[e, dir]
+						end
+						d.each_entry do |e|
+							if (!isLogDir && d.basename != "log") || (!%{current lock state run ok down supervise}.include?(e.basename) && e.basename !~ /^\@[0-9a-f]{24}\.(s|u)$/)
+								if e._d?
+									proc[e, gList.find{_1 == e} || dir]
+								elsif e._f? && e.file_size != 0 && e._r? && (((ol = e.readline rescue "\x00") !~  /^\#\!/ && ol !~ /\x00/) rescue nil)
+									fProc[e, dir]
+								end
+							end
 						end
 					end
 				end
-			elsif d._f?
+			elsif d._f? && d._r?
 				fProc[d, dir]
 			end
 		end
-		["$R/var/log", "$R/var/service/*/log", "$R/var/log/sv", "$R/var/service_log"].each do |e|
+		r = ENV["R"]
+		["#{r}/var/log", "#{r}/var/service/*/log", "#{r}/etc/service/*/log/main", "#{r}/var/log/sv", "#{r}/var/service_log"].each do |e|
 			gList += e.glob
 		end
+		gList.inspect.ln
 		gList.each do |e|
 			proc[e]
 		end
 		require "shellwords"
-		Shellwords.join(ret.to_a)
+		ret = Shellwords.join(ret.to_a)
+		ret
 	end
 '
 
@@ -744,6 +755,7 @@ def_ruby '
 	require "Yk/path_aux"
 	def raw_cmd_line buff = nil
 		if buff
+			#"/tmp/raw_cmd_line.log".write_a "#{Time.now} buff=#{buff.inspect}\n"
 			carr = Shellwords.split(buff)
 			if carr[0] == "fnd"
 				carr.shift
