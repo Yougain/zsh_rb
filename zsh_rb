@@ -1,7 +1,9 @@
-#!/usr/bin/env ruby
+#!/bin/env ruby
 
 require 'Yk/path_aux'
 require 'pty'
+
+R = (_ = "/data/data/com.termux/files/usr")._e? ? _ : ""
 
 zpid = Process.ppid
 ENV.each do |k, v|
@@ -11,7 +13,7 @@ ENV.each do |k, v|
 end
 
 def checkZ zpid
-	if File.exists?(pf = "/proc/#{zpid}/exe")
+	if File.exist?(pf = "/proc/#{zpid}/exe")
 		l = File.readlink(pf)
 		if !l || File.basename(l) != "zsh"
 			exit 3
@@ -44,8 +46,9 @@ def get_file_pos expr, pid
 end
 
 
-(from_ruby = "/tmp/#{$0.basename}.#{zpid}.r")._![:_e?]&.mkfifo
-(to_ruby = "/tmp/#{$0.basename}.#{zpid}.w")._![:_e?]&.mkfifo
+"#{R}/tmp/Yk/zsh_rb".mkdir_p
+(from_ruby = "#{R}/tmp/Yk/zsh_rb/#{$0.basename}.#{zpid}.r")._![:_e?]&.mkfifo
+(to_ruby = "#{R}/tmp/Yk/zsh_rb/#{$0.basename}.#{zpid}.w")._![:_e?]&.mkfifo
 
 #"lsof #{from_ruby} 2>/dev/null".read_each_line_p do |ln|
 #	if ln =~ /^ruby\s/
@@ -61,7 +64,7 @@ fork do
 		Process.daemon true
         at_exit do
           %W{r w}.each do |m|
-            "/tmp/#{$0.basename}.*.#{m}".glob.each do |f|
+            "#{R}/tmp/Yk/zsh_rb/#{$0.basename}.*.#{m}".glob.each do |f|
               if f =~ /\.(\d+)\./
                 if !"/proc/#{$1}"._d?
                   f.rm rescue nil
@@ -105,7 +108,7 @@ fork do
 			fw.sync
 			to_ruby.open do |fr|
 				loop do
-					#require 'tz/debug2'
+					#require 'Yk/debug2'
 					all = ""
 					while all[-10..-1] != "\0\0\0\0\0\0\0\0\0\n"
 						IO.select [fr]

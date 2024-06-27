@@ -1,18 +1,32 @@
 #!/bin/env zsh
 
+
+if [ -e /data/data/com.termux/files ];then
+		R="/data/data/com.termux/files/usr"
+		if [ ! -e $R/usr ];then
+				ln -s . $R/usr
+		fi
+		if [ ! -e $R/usr/bin/tput ];then
+			apt-get -y install ncurses-utils
+		fi
+else
+		R=""
+fi
+
 setopt no_beep
 
-FPATH="/usr/share/zsh/5.0.6/functions:$FPATH"
+FPATH="$R/usr/share/zsh/`zsh --version|awk '{print $2}'`/functions:$FPATH"
+
 export LC_ALL="en_US.UTF-8"
 export LANG="en_US.UTF-8"
 
-if [ -x /usr/bin/go ];then
+if [ -x $R/usr/bin/go ];then
 	export GOPATH=$(go env GOPATH)
 	export PATH=$PATH:$GOPATH/bin
 fi
 
-if [ -x /usr/share/bashlib_y ];then
-	export PATH=/usr/share/bashlib_y:$PATH
+if [ -d $R/usr/share/bashlib_y ];then
+	export PATH=$R/usr/share/bashlib_y:$PATH
 fi
 
 ## Completion configuration
@@ -23,7 +37,7 @@ compinit -u
 
 
 
-mkdir -p $HOME/.tmp/tz/zsh/zsh.local
+mkdir -p $HOME/.tmp/Yk/zsh/zsh.local
 
 eval $(zsh_rb)
 
@@ -90,9 +104,9 @@ def_ruby '
 	def __clear_prev__ tmp
 		require "Yk/path_aux"
 		["cmd", "idle", "cmd-before"].each do |e|
-			"$HOME/.tmp/tz/zsh/zsh.local/#{e}.*".glob.each do |f|
+			"$HOME/.tmp/Yk/zsh/zsh.local/#{e}.*".glob.each do |f|
 				if f =~ /#{Regexp.escape e}.(\d+)/
-					if !"/proc/#{tmp.to_i}".exists?
+					if !"/proc/#{tmp.to_i}".exist?
 						f.unlink
 					end
 				end
@@ -125,7 +139,7 @@ def_ruby '
     def hist_set_cd hx, home, pwd
         d = nil
         f = "#{home}/.zsh_history_pwd.d/#{hx}"
-        if File.exists? f
+        if File.exist? f
             d = IO.read(f).lines[-1].strip
         end
 		hist_set_cd_direct d, home, pwd
@@ -194,7 +208,7 @@ __cur_hist(){
 }
 
 
-mkdir -p "$HOME/.tmp/tz/zsh/zsh.local"
+mkdir -p "$HOME/.tmp/Yk/zsh/zsh.local"
 
 zstyle ':completion:*:default' menu select=2
 preexec() {
@@ -219,20 +233,20 @@ preexec() {
 			echo -ne "\033_$cmd (${HOST%%.*}/`date +%H:%M:%S`)"; echo -ne "\033\\"
 		    ;;
 		esac
-		if [ -e $HOME/.tmp/tz/zsh/zsh.local/cmd.$$.$__shell_rnd__ ];then
-			mv -f "$HOME/.tmp/tz/zsh/zsh.local/cmd.$$.$__shell_rnd__" "$HOME/.tmp/tz/zsh/zsh.local/cmd-before.$$.$__shell_rnd__"
+		if [ -e $HOME/.tmp/Yk/zsh/zsh.local/cmd.$$.$__shell_rnd__ ];then
+			mv -f "$HOME/.tmp/Yk/zsh/zsh.local/cmd.$$.$__shell_rnd__" "$HOME/.tmp/Yk/zsh/zsh.local/cmd-before.$$.$__shell_rnd__"
 		fi
-		echo -ne $1 > "$HOME/.tmp/tz/zsh/zsh.local/cmd.$$.$__shell_rnd__"
-		rm -f "$HOME/.tmp/tz/zsh/zsh.local/idle.$$.$__shell_rnd__"
+		echo -ne $1 > "$HOME/.tmp/Yk/zsh/zsh.local/cmd.$$.$__shell_rnd__"
+		rm -f "$HOME/.tmp/Yk/zsh/zsh.local/idle.$$.$__shell_rnd__"
 	fi
 }
 precmd() {
-	echo -ne > "$HOME/.tmp/tz/zsh/zsh.local/idle.$$.$__shell_rnd__"
+	echo -ne > "$HOME/.tmp/Yk/zsh/zsh.local/idle.$$.$__shell_rnd__"
 }
 zshexit(){
-	rm -f "$HOME/.tmp/tz/zsh/zsh.local/idle.$$.$__shell_rnd__"
-	rm -f "$HOME/.tmp/tz/zsh/zsh.local/cmd.$$.$__shell_rnd__"
-	rm -f "$HOME/.tmp/tz/zsh/zsh.local/cmd-before.$$.$__shell_rnd__"
+	rm -f "$HOME/.tmp/Yk/zsh/zsh.local/idle.$$.$__shell_rnd__"
+	rm -f "$HOME/.tmp/Yk/zsh/zsh.local/cmd.$$.$__shell_rnd__"
+	rm -f "$HOME/.tmp/Yk/zsh/zsh.local/cmd-before.$$.$__shell_rnd__"
 }
 ST_hist=1 preexec
 ST_hist=0
@@ -306,13 +320,95 @@ gnome*)
 esac
 
 
+if [ "`id -u`" = 0 ];then
+	__sudo(){
+		$@
+	}
+else
+	if [ -z "$R" ];then
+		ruby<<-END
+			require 'pty'
+			require 'etc'
+
+			begin
+				userName = Etc.getpwuid(Process.uid).name
+			rescue ArgumentError
+				exit 1
+			end
+
+			testStr = Random.rand(100000000).to_s
+			PTY.spawn "sudo echo #{testStr}" do |r, w, pid|
+				begin
+					response = r.readpartial 2048
+					case response
+					when /^\[sudo\] password for #{Regexp.escape userName}:/
+						Process.kill :INT, pid
+						exit 0
+					when /#{testStr}/
+						exit 0
+					else
+						print response.ln
+						exit 1
+					end
+				rescue EOFError
+					exit 1
+				end
+			end
+		END
+		SUDO_ABLE=$?
+		if [ "$SUDO_ABLE" = "0" ];then
+			__sudo(){
+				/usr/bin/sudo $@
+			}
+		else
+			__sudo(){
+				local ARGS="\"`declare -p @`\""
+				ARGS="${ARGS#*'=('}"
+				ARGS="${ARGS%')'}"
+				/bin/su -c "$ARGS"
+			}
+		fi
+	else
+		if [ -e $R/usr/bin/sudo ];then
+			__sudo(){
+				$R/usr/bin/sudo $@
+			}
+		else
+			__sudo(){
+				echo "Error: missing sudo" >&2
+				return 255
+			}
+		fi
+	fi
+fi
+
+
+su(){
+	if [ -z "$R" ]; then
+	    if [ "$#" = 0 ]; then
+	        if [ "$SUDO_ABLE" = "0" ]; then
+	            __sudo $SHELL
+	        else
+	        	su
+	        fi
+	    else
+	        su $@
+	    fi
+	else
+		if [ "$#" = 0 -a -e /sbin/su ];then
+			tsu
+		else
+			/sbin/su $@
+		fi
+	fi
+}
 
 resu() {
-	su -c "if [ -e $HOME/.tmp/tz/zsh/zsh.local/cmd.$$.$__shell_rnd__ ]; then ( zsh -c 'cat $HOME/.tmp/tz/zsh/zsh.local/cmd.$$.$__shell_rnd__;echo' >> ~/.zsh_history;zsh -l $HOME/.tmp/tz/zsh/zsh.local/cmd.$$.$__shell_rnd__ ); fi;exec zsh -l"
+	su -c "if [ -e $HOME/.tmp/Yk/zsh/zsh.local/cmd.$$.$__shell_rnd__ ]; then ( zsh -c 'cat $HOME/.tmp/Yk/zsh/zsh.local/cmd.$$.$__shell_rnd__;echo' >> ~/.zsh_history;zsh -l $HOME/.tmp/Yk/zsh/zsh.local/cmd.$$.$__shell_rnd__ ); fi;exec zsh -l"
 }
 resudo() {
-	if [ -e $HOME/.tmp/tz/zsh/zsh.local/cmd.$$.$__shell_rnd__ ]; then
-		sudo `cat $HOME/.tmp/tz/zsh/zsh.local/cmd.$$.$__shell_rnd__`
+	if [ -e $HOME/.tmp/Yk/zsh/zsh.local/cmd.$$.$__shell_rnd__ ]; then
+		sudo `cat $HOME/.tmp/Yk/zsh/zsh.local/cmd.$$.$__shell_rnd__`
 	fi
 }
 
@@ -431,48 +527,92 @@ RPROMPT="%{${fg[magenta]}%}%*%{${reset_color}%}"
 
 IFS=$'\n\t '
 
+if systemctl > /dev/null 2>&1;then
+	systemctl=systemctl
+fi
 
-_zv(){
-	compadd `ls /etc/service_pool`
+_w(){
+	which $1 > /dev/null 2>&1
 }
-compdef _zv zv
 
-_sv(){
-    compadd `systemctl list-units --type=service -all | ruby -e 'STDIN.each_line do |ln| if ln =~ /([^\s]+)\.service/; print $1 + "\n";end;end'`
-}
-compdef _sv sv
-_lv(){
-	compadd `sudo journalctl -F '_SYSTEMD_UNIT' | ruby -e 'STDIN.each_line do |ln| if ln =~ /([^\s]+)\.service/; print $1 + "\n";end;end'`
-	compadd `getLVWList`
-}
-compdef _lv lv
+if [ -z "$systemctl" ];then
+	_zv(){
+		compadd `ls /etc/service_pool`
+	}
+	compdef _zv zv
+else
+	if _w sv && ! _w runsv; then
+		_sv(){
+		    compadd `systemctl list-units --type=service -all | ruby -e 'STDIN.each_line do |ln| if ln =~ /([^\s]+)\.service/; print $1 + "\n";end;end'`
+		}
+		compdef _sv sv
+	fi
+	if _w lv; then
+		_lv(){
+			compadd `sudo journalctl -F '_SYSTEMD_UNIT' | ruby -e 'STDIN.each_line do |ln| if ln =~ /([^\s]+)\.service/; print $1 + "\n";end;end'`
+			compadd `getLVWList`
+		}
+		compdef _lv lv
+	fi
+fi
+
 
 def_ruby '
 	def getLVWList
 		require "Yk/path_aux"
 		require "set"
 		ret = Set.new
-		proc = Proc.new do |d, dir|
-			dir ||= d
-			d.recursive do |e|
-				next if e._d?
-				begin
-					f = e.relative_path_from dir
-					if f =~ /\.\d+$/ || f =~ /\-20\d+/ || f =~ /sa\/sa(r|)\d+/ || e == "/var/log/sa"
-						next
-					end
+		dids = Hash.new
+		gList = []
+		fProc = Proc.new do |e, dir|
+			begin
+				f = e.relative_path_from dir
+				if f !~ /\.\d+$/ && f !~ /\-20\d+/ && f !~ /sa\/sa(r|)\d+/ && e != "/var/log/sa"
 					ret.add f
-					if e.directory? && !e.file?(e / "current")
-						proc.call e, dir
-					end
-				rescue => e
-					h = ENV["HOME"]
-					"#{h}/.tmp/zshtest".write_a e.to_s
 				end
+			rescue => err
+				h = ENV["HOME"]
+				"#{h}/.tmp/zshtest".write_a err.to_s
 			end
 		end
-		["/var/log"].each do |e|
-			proc.call e
+		proc = Proc.new do |d, dir|
+			dir ||= d
+			if d._d?
+				s = d.stat
+				if ! dids.key? [d.dev, d.ino]
+					dids[[d.dev, d.ino]] = 1
+					isLogDir = false
+					d.each_entry do |e|
+						if e._d?
+							proc[e, gList.find{_1 == e} || dir]
+						elsif e.basename == "current" || e.basename =~ /^\@[0-9a-f]{24}\.(s|u)$/
+							if ! isLogDir
+								isLogDir = true
+								rd = d.relative_path_from(dir)
+								if rd == "."
+									if d.basename == "log"
+										ret.add d.dirname.basename
+									else
+										ret.add d.basename
+									end
+								else
+									ret.add rd
+								end
+							end
+						else
+							fProc[e, dir]
+						end
+					end
+				end
+			elsif d._f?
+				fProc[d, dir]
+			end
+		end
+		["$R/var/log", "$R/var/service/*/log", "$R/var/log/sv", "$R/var/service_log"].each do |e|
+			gList += e.glob
+		end
+		gList.each do |e|
+			proc[e]
 		end
 		require "shellwords"
 		Shellwords.join(ret.to_a)
@@ -485,110 +625,96 @@ _lvw(){
 }
 compdef _lvw lvw
 
-_rpb(){
-	compadd `ls $HOME/rpb $HOME/rwork|sort|uniq|grep -v $HOME`
-}
-
-compdef _rpb rpb
-
-_e(){
-	compadd -V 1 `/usr/local/bin/comp_console_files ~/.console_files`
-}
-
-bindkey -r '^[[Z'
-compdef -k _e complete-word '^[[Z'
-
-
-_e2(){
-	compadd -V 2 `/usr/local/bin/comp_console_files ~/.command_arg_files`
-}
-bindkey -r '^[[27;5;9~'
-compdef -k _e2 complete-word '^[[27;5;9~'
-
-
-_e3(){
-	compadd -V 2 `/usr/local/bin/comp_console_files ~/.command_arg_dirs`
-}
-bindkey -r '^[[27;6;9~'
-compdef -k _e3 complete-word '^[[27;6;9~'
 
 sudo(){
 	if [ "$1" = "vi" ]; then
 		shift
-		/usr/bin/sudo vim $@
+		__sudo vim $@
 	else
-		/usr/bin/sudo $@
+		__sudo $@
 	fi
 }
 
 make(){
 	if [ "$1" = "install" ]; then
 		shift
-		/usr/bin/sudo make install $@
+		__sudo make install $@
 	else
-		/usr/bin/make $@
+		__sudo $@
 	fi
 }
 
 gem(){
 	if [ "$1" = "install" ]; then
 		shift
-		/usr/bin/sudo gem install $@
+		__sudo $R/usr/bin/gem install $@
 	else
-		/usr/bin/gem $@
+		$R/usr/bin/gem $@
 	fi
 }
 
-rpm(){
-	ruby << END
-	cmd = %w{$1}[0]
-	cmds = %w{$*}
-	if cmd[0] == ?- && cmd[1] != ?-
-		if cmd =~ /[iUe]/ && !cmds.find{|e| e =~ /^[^\-].*\.src\.rpm$/}
-			system *%w{/usr/bin/sudo /bin/rpm $*}
+if [ -e /bin/rpm ];then
+	rpm(){
+		ruby <<-END
+			cmd = %w{$1}[0]
+			cmds = %w{$*}
+			if cmd[0] == ?- && cmd[1] != ?-
+				if cmd =~ /[iUe]/ && !cmds.find{|e| e =~ /^[^\-].*\.src\.rpm$/}
+					system *%w{/usr/bin/sudo $R/bin/rpm $*}
+				else
+					system *%w{/bin/rpm $*}
+				end
+			end
+		END
+	}
+fi
+
+if [ -x /usr/bin/loadkeys ];then
+	jp(){
+		if [ "$TTY" = "/dev/tty1" ];then
+			loadkeys jp106
 		else
-			system *%w{/bin/rpm $*}
-		end
-	end
-END
-}
+			LANG=ja_JP.UTF-8
+			LC_ALL=ja_JP.UTF-8
+		fi
+	}
 
-jp(){
-	if [ "$TTY" = "/dev/tty1" ];then
-		loadkeys jp106
-	else
-		LANG=ja_JP.UTF-8
-		LC_ALL=ja_JP.UTF-8
-	fi
-}
+	us(){
+		if [ "$TTY" = "/dev/tty1" ];then
+			loadkeys us
+		else
+			LANG=en_US.UTF-8
+			LC_ALL=en_US.UTF-8
+		fi
+	}
+fi
 
-us(){
-	if [ "$TTY" = "/dev/tty1" ];then
-		loadkeys us
-	else
-		LANG=en_US.UTF-8
-		LC_ALL=en_US.UTF-8
-	fi
-}
+if [ -x $R/usr/bin/proz ];then
+	proz(){
+		$R/usr/bin/proz -k=10 "$@"
+	}
+fi
 
-proz(){
-	/usr/bin/proz -k=10 "$@"
-}
+if [ -x $R/usr/bin/dstat ];then
+	iotop(){
+		$R/usr/bin/dstat --top-io-adv --top-bio-adv "$@"
+	}
+fi
 
-iotop(){
-	/usr/bin/dstat --top-io-adv --top-bio-adv "$@"
-}
 
-explorer(){
-	/mnt/c/Windows/explorer.exe "$@"
-}
+if [ -e /mnt/c/Windows/explorer.exe ];then
+	explorer(){
+		/mnt/c/Windows/explorer.exe "$@"
+	}
+fi
+
 
 ping(){
-	sudo ping "$@"
+	__sudo ping "$@"
 }
 
 
-if [ -e /usr/bin/cyppath ]; then
+if [ -e /usr/bin/cygpath ]; then
 	__SYSTEM=`cygpath -u ${SYSTEMROOT}`/system32
 	alias ping="cocot -p CP932 $__SYSTEM/ping.exe -n 10000"
 	alias arp="cocot -p CP932 $__SYSTEM/arp.exe"
@@ -609,7 +735,6 @@ fi
 alias axel="axel --num-connections=10"
 alias vi="vim"
 
-#PATH="/usr/local/bin:${PATH}"
 
 fnd(){ }
 
@@ -664,10 +789,10 @@ def_ruby '
 	end
 '
 function _raw_cmd_line {
-	export RAW_CMD_LINE=$BUFFER
-	raw_cmd_line $BUFFER
+	export RAW_CMD_LINE="$BUFFER"
+	raw_cmd_line "$BUFFER"
 	if [ -n "$raw_cmd_line" ]; then
-		BUFFER=$raw_cmd_line
+		BUFFER="$raw_cmd_line"
 	fi
 	zle accept-line
 }
@@ -676,26 +801,10 @@ zle -N raw_cmd_line_widget _raw_cmd_line
 bindkey '^J' raw_cmd_line_widget
 bindkey '^M' raw_cmd_line_widget
 
-if [ -f /etc/colorrc ]; then
-    eval `dircolors /etc/colorrc`
+if [ -f $R/etc/colorrc ]; then
+    eval `dircolors $R/etc/colorrc`
 fi
 
-function sshr(){
-	ssh -p 22 -o "StrictHostKeyChecking no" -o "UserKnownHostsFile /dev/null" -l rancher $@
-}
-
-
-export PERL_LOCAL_LIB_ROOT="$PERL_LOCAL_LIB_ROOT:/root/perl5";
-export PERL_MB_OPT="--install_base /root/perl5";
-export PERL_MM_OPT="INSTALL_BASE=/root/perl5";
-export PERL5LIB="/root/perl5/lib/perl5:$PERL5LIB";
-export PATH="/usr/local/go/bin:/root/perl5/bin:$PATH";
-export DISPLAY=localhost:0.0;
-stty stop undef
-sudo /usr/bin/svscanboot_init
-
-tz=/usr/local/share/ruby/site_ruby/tz
-export RUBYOPT='-W:no-experimental'
 
 enable_bracketed_mode () {
         printf "\e[?2004h"
@@ -706,5 +815,7 @@ disable_bracketed_mode () {
 }
 
 key(){
+	echo "exit by pressing Ctrl-D"
 	showkey -a
 }
+
