@@ -212,9 +212,12 @@ mkdir -p "$HOME/.tmp/Yk/zsh/zsh.local"
 zstyle ':completion:*:default' menu select=2
 preexec() {
 	clear_hist_cd
+	D_HISTNO=
 	if [ "$ST_hist" != "1" ]; then
 		if [ -n "$clear_hist_cd" ]; then
-			cd $clear_hist_cd
+			if [ -z "$not_cd_hist_cd" ]; then
+				cd $clear_hist_cd
+			fi
 		fi
 		mkdir -p ~/.zsh_history_pwd.d
 		echo $PPWD > ~/.zsh_history_pwd.d/`__cur_hist`
@@ -444,36 +447,187 @@ bindkey "^n" history-beginning-search-forward-end
 bindkey "\\ep" history-beginning-search-backward-end
 bindkey "\\en" history-beginning-search-forward-end
 
+bindkey "^[[1;5B" dir-history-forward
+bindkey "^[[1;5A" dir-history-back
+
 # reverse menu completion binded to Shift-Tab
 #
 bindkey "\e[Z" reverse-menu-complete
 '
 
 function history-beginning-search-backward-end-pwd(){
+	#echo $HISTNO
+	D_HISTNO=
 	zle .history-beginning-search-backward
 	hist_set_cd "$HISTNO" "$HOME" "$PWD"
 }
 
 function history-beginning-search-forward-end-pwd(){
+	D_HISTNO=
 	zle .history-beginning-search-forward
 	hist_set_cd "$HISTNO" "$HOME" "$PWD"
 }
 
 function up-line-or-history-hook(){
+	D_HISTNO=
 	zle .up-line-or-history
 	hist_set_cd "$HISTNO" "$HOME" "$PWD"
 }
 
 function down-line-or-history-hook(){
+	D_HISTNO=
 	zle .down-line-or-history
 	hist_set_cd "$HISTNO" "$HOME" "$PWD"
 }
+
+function dir-history(){
+	local mode=$1 # back or forward
+	local skip_search=
+#	echo D_HISTNO=$D_HISTNO
+	if [ -z "$D_HISTNO" ];then
+#		echo reset
+		if [ -z "$BUFFER" ];then
+			D_CLINE=1
+		else
+			D_CLINE=
+		fi
+		D_HISTNO=$HISTNO
+		D_CUR=
+		if [ -s "~/.zsh_history_pwd.d/$D_HISTNO" ];then
+			read D_CUR < "~/.zsh_history_pwd.d/$D_HISTNO"
+		fi
+		if [ -z "$D_CUR" ];then
+			D_CUR="$PWD"
+		fi
+		typeset -g -A D_DIR2HNO
+		typeset -g -A D_HNO2DIR
+		typeset -g -A D_HNO_NEXT
+		typeset -g -A D_HNO_PREV
+		D_DIR2HNO=("$D_CUR" "$D_HISTNO")
+		D_HNO2DIR=("$D_HISTNO" "$D_CUR")
+		D_HNO_BAK=()
+		D_HNO_FWD=()
+		if [ "$D_CUR" != "$PWD" ];then
+			skip_search=1
+		fi
+	fi
+	if [ -z "$skip_search" ];then
+#		echo "D_HNO_BAK[$D_HISTNO]=${D_HNO_BAK[$D_HISTNO]}"
+		[ -z "${D_HNO_BAK[$D_HISTNO]}" ]
+#		echo $?
+		if ( [ "$mode" = back ] && [ -z "${D_HNO_BAK[$D_HISTNO]}" ] ) || ( [ "$mode" != back ] && [ -z "${D_HNO_FWD[$D_HISTNO]}" ] );then
+#			echo 2.5
+#			[ "$mode" = back ] && ((D_HISTNO >= 2)) || [ "$mode" != back ] && ((D_HISTNO < HISTCMD - 1))
+#			echo $?
+#			[ "$mode" = back ] && ((D_HISTNO >= 2))
+#			echo $?
+#			[ "$mode" != back ] && ((D_HISTNO < HISTCMD - 1)) || [ "$mode" = back ] && ((D_HISTNO >= 2))
+#			echo $?
+#			( [ "$mode" = back ] && ((D_HISTNO >= 2)) ) || ( [ "$mode" != back ] && ((D_HISTNO < HISTCMD - 1)) )
+#			echo $?
+			if ( [ "$mode" = back ] && ((D_HISTNO >= 2)) ) || ( [ "$mode" != back ] && ((D_HISTNO < HISTCMD - 1)) ); then
+#				echo 3
+				local tmp
+				local d_cur_org="$D_CUR"
+				local d_histno_org="$D_HISTNO"
+				if [ "$mode" = back ]; then
+#					echo 4
+					((--D_HISTNO))
+				else
+#					echo 5
+					((++D_HISTNO))
+				fi
+				while ( [ "$mode" = back ] && ((D_HISTNO > 0)) ) || ( [ "$mode" != back ] && ((D_HISTNO < HISTCMD)) ); do
+#					echo 6 "-$D_HISTNO-"
+#					[ -e ~/.zsh_history_pwd.d/$D_HISTNO ]
+#					echo $?
+					if [ -e ~/.zsh_history_pwd.d/$D_HISTNO ];then
+#						echo 7
+#						echo 100
+#						cat ~/.zsh_history_pwd.d/$D_HISTNO
+						read D_CUR < ~/.zsh_history_pwd.d/$D_HISTNO
+#						echo $D_CUR
+						if [ -n "$D_CUR" -a "$d_cur_org" != "$D_CUR" -a -z "${D_DIR2HNO[$D_CUR]}" ];then
+#							echo 8
+							D_DIR2HNO[$D_CUR]="$D_HISTNO"
+							D_HNO2DIR[$D_HISTNO]="$D_CUR"
+							D_HNO_BAK[$d_histno_org]="$D_HISTNO"
+							D_HNO_FWD[$D_HISTNO]="$d_histno_org"
+							break
+						fi
+					fi
+#					echo 9
+					if [ "$mode" = back ]; then
+#						echo 10
+						((--D_HISTNO))
+					else
+						echo $D_HISTNO
+						((++D_HISTNO))
+					fi
+				done
+#				echo 12
+			fi
+		elif ( [ "$mode" = back ] && [ -n "${D_HNO_BAK[$D_HISTNO]}" ] ); then
+#			echo 13
+			D_HISTNO=${D_HNO_BAK[$D_HISTNO]}
+			D_CUR=${D_HNO2DIR[$D_HISTNO]}
+		elif ( [ "$mode" != back ] && [ -n "${D_HNO_FWD[$D_HISTNO]}" ] ); then
+			D_HISTNO=${D_HNO_FWD[$D_HISTNO]}
+			D_CUR=${D_HNO2DIR[$D_HISTNO]}
+		fi
+#		echo 14
+	fi
+#	echo 15
+	if [ -n "$D_CLINE" ];then
+#		echo 16
+		if [ "$D_CUR" = "$PWD" ];then
+			BUFFER=
+		elif [ "$D_CUR" = "$HOME" ];then
+			BUFFER='~/'
+		else
+			local b
+			if [ $D_CUR != "/" ];then
+				local _D_CUR="$(escape_special_chars D_CUR)"
+				if [ ${D_CUR:0:$((${#PWD} + 1))} = $PWD/ ]; then
+					BUFFER="${_D_CUR#$PWD/}"/
+				elif [ ${D_CUR:0:$((${#HOME} + 1))} = $HOME/ ]; then
+					BUFFER="~""/${_D_CUR#$HOME/}"/
+				else
+					BUFFER="$_D_CUR"/
+				fi
+			else
+				BUFFER=/
+			fi
+		fi
+	fi
+#	echo 17
+	hist_set_cd "$D_HISTNO" "$HOME" "$PWD"
+}
+
+function escape_special_chars {
+  eval "local var=\$$1"
+  printf "%q\n" "$var"
+}
+
+
+dir-history-back(){
+	dir-history back
+}
+
+
+dir-history-forward(){
+	dir-history forward
+}
+
+
+zle -N dir-history-back dir-history-back
+zle -N dir-history-forward dir-history-forward
+
 
 zle -N history-beginning-search-backward-end-pwd history-beginning-search-backward-end-pwd
 zle -N history-beginning-search-forward-end-pwd history-beginning-search-forward-end-pwd
 zle -N up-line-or-history-hook up-line-or-history-hook
 zle -N down-line-or-history-hook down-line-or-history-hook
-
 
 
 ## zsh editor
@@ -800,18 +954,49 @@ def_ruby '
 		end
 	end
 '
+
+function trim_spaces {
+  local var=$1
+  var="${var#"${var%%[![:space:]]*}"}"   # 前のスペースを削除
+  var="${var%"${var##*[![:space:]]}"}"   # 後のスペースを削除
+  echo "$var"
+}
+
+function getFirst {
+	echo "$1"
+}
+
 function _raw_cmd_line {
 	export RAW_CMD_LINE="$BUFFER"
 	raw_cmd_line "$BUFFER"
 	if [ -n "$raw_cmd_line" ]; then
 		BUFFER="$raw_cmd_line"
 	fi
-	zle accept-line
+	local var="$(getFirst $BUFFER)"
+	if [ "${var: -1:1}" = "/" -a -d "${var%?}" ];then
+		cd "${var%?}"
+	else
+		zle accept-line
+	fi
 }
 
+function _raw_cmd_line_shift {
+	not_cd_hist_cd=
+	_raw_cmd_line
+}
+
+
+function _raw_cmd_line_shift {
+	not_cd_hist_cd=1
+	_raw_cmd_line
+}
+
+
 zle -N raw_cmd_line_widget _raw_cmd_line
-bindkey '^J' raw_cmd_line_widget
+zle -N raw_cmd_line_shift_widget _raw_cmd_line_shift
+
 bindkey '^M' raw_cmd_line_widget
+bindkey '^J' raw_cmd_line_shift_widget
 
 if [ -f $R/etc/colorrc ]; then
     eval `dircolors $R/etc/colorrc`
@@ -827,7 +1012,6 @@ disable_bracketed_mode () {
 }
 
 key(){
-	echo "exit by pressing Ctrl-D"
 	showkey -a
 }
 
