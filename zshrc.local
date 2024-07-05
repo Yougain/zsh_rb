@@ -219,9 +219,11 @@ preexec() {
 				cd $clear_hist_cd
 			fi
 		fi
-		mkdir -p ~/.zsh_history_pwd.d
-		echo $PPWD > ~/.zsh_history_pwd.d/`__cur_hist`
-		PPWD=$PWD
+		#mkdir -p ~/.zsh_history_pwd.d
+		#local histno=$((`__cur_hist` + 1))
+		#echo $PWD > ~/.zsh_history_pwd.d/$histno
+		#mkdir -p ~/.zsh_history_raw.d
+		#echo $BUFFER > ~/.zsh_history_raw.d/$histno
 	fi
 	local cmd
 	__first_cmd $1
@@ -427,14 +429,14 @@ bindkey "^[[4~" end-of-line # End gets to line end
 bindkey "^[[3~" delete-char # Del
 bindkey "^[[5~" beginning-of-history
 bindkey "^[[6~" end-of-history
-bindkey "^[[5;2~" history-beginning-search-backward-end-pwd
-bindkey "^[[6;2~" history-beginning-search-forward-end-pwd
-bindkey "^[[1;2A" history-beginning-search-backward-end-pwd
-bindkey "^[[1;2B" history-beginning-search-forward-end-pwd
-bindkey "^[OA"  up-line-or-history-hook
-bindkey "^[OB"  down-line-or-history-hook
-bindkey "^[[A"  up-line-or-history-hook
-bindkey "^[[B"  down-line-or-history-hook
+bindkey "^[[5;2~" history-beginning-search-backward
+bindkey "^[[6;2~" history-beginning-search-forward
+bindkey "^[[1;2A" history-beginning-search-backward
+bindkey "^[[1;2B" history-beginning-search-forward
+bindkey "^[OA"  up-line-or-history
+bindkey "^[OB"  down-line-or-history
+bindkey "^[[A"  up-line-or-history
+bindkey "^[[B"  down-line-or-history
 
 #bindkey -s "^[s" "^[[A^[[H^[[1~sudo \n" #for sudo
 bindkey -s "^[s" "resudo\n" #for sudo
@@ -453,32 +455,229 @@ bindkey "^[[1;5A" dir-history-back
 # reverse menu completion binded to Shift-Tab
 #
 bindkey "\e[Z" reverse-menu-complete
+
+bindkey "^Z" undo
+bindkey "^Y" redo
+bindkey "\\xc2\\x9a" redo
 '
 
-function history-beginning-search-backward-end-pwd(){
-	#echo $HISTNO
-	D_HISTNO=
-	zle .history-beginning-search-backward
-	hist_set_cd "$HISTNO" "$HOME" "$PWD"
+. $HOME/.zsh_bindkey
+
+typeset -g -A HIST_CMD_BUFF_MOD
+typeset -g -A HIST_CMD_IS_LOADED
+typeset -g -A HIST_CMD_BUFF_ORG
+typeset -g -A HIST_DIR
+typeset -g -A FILE_IDS
+typeset -g -A FILE_CONTENT
+
+PROG_NAME="$0"
+
+
+dbv(){
+	local ft="${funcfiletrace[1]}"
+	local lno=${ft##*:}
+	local file=${ft%:*}
+	local id
+	local ln
+	local lns
+	if [ -z "${FILE_IDS[$file]}" ];then
+		id=$RANDOM$RANDOM$RANDOM
+		FILE_IDS[$file]=$id
+		while IFS= read -r ln; do
+			eval "FILE_CONTENT_$id+=(\"\$ln\")"
+		done < $file
+	else
+		id=${FILE_IDS[$file]}
+	fi
+	eval "ln=\"\${FILE_CONTENT_$id""[$lno]}\""
+	ln="${ln#*dbv}"
+	mkdir -p ~/.tmp/log/zsh_dbv
+	echo "`date +"%y-%m-%d %H:%M:%S.%N"` $0[$$] $file:$lno `trim_spaces ln` = $@" >> ~/.tmp/log/zsh_dbv/${PROG_NAME##*/}.log
 }
 
-function history-beginning-search-forward-end-pwd(){
+x-history-hook(){
 	D_HISTNO=
-	zle .history-beginning-search-forward
-	hist_set_cd "$HISTNO" "$HOME" "$PWD"
+	local histno=$HISTNO
+	#if -a ! -s ~/.zsh_history_pwd.d/$HISTNO ];then
+	local d_cur
+	local lastno=$((`__cur_hist` + 1))
+	local mode
+	if [[ ${1%%-*} =~ up\|down ]];then
+		mode=${1%%-*}
+	elif [[ ${1##*-} =~ backward\|forward ]]; then
+		mode=${1##*-}
+	fi
+	if [ $HISTNO = $lastno ];then
+		if [ -z $HIST_CMD_IS_LOADED[$HISTNO] ];then
+			HIST_DIR[$HISTNO]="$PWD"
+			HIST_CMD_BUFF_MOD[$HISTNO]="$BUFFER"
+			HIST_CMD_BUFF_ORG[$HISTNO]=""
+			HIST_CMD_IS_LOADED[$HISTNO]=1
+		fi
+	fi
+	local buff_prev="$BUFFER"
+	local lbuff_prev="$LBUFFER"
+	local cur_prev="$CURSOR"
+	zle .$1
+	HIST_HOOK_PREV=$1
+	if [ $histno != $HISTNO ];then
+		dbv $?, $1, $histno, $HISTNO, ${HIST_CMD_IS_LOADED[$histno]}, $buff_prev, ${HIST_CMD_BUFF_ORG[$histno]}
+		local bmod
+		local org="${HIST_CMD_BUFF_ORG[$histno]}"
+		if [[ $mode =~ up\|down ]]; then
+			if [ -n "${HIST_CMD_IS_LOADED[$histno]}" -a "$buff_prev" != "$org" ];then
+				dbv 1
+				bmod="$org"
+			elif [ $HISTNO = $lastno -a $mode = down -a "$buff_prev" != "" ];then
+				dbv 2
+				bmod=""
+			elif [ $histno = $lastno -a $mode = up -a "$buff_prev" = "" ];then
+				bmod="${HIST_CMD_BUFF_MOD[$histno]}"
+				dbv 3 $bmod
+			fi
+			dbv 4
+		elif [[ $mode =~ forward\|backward ]]; then
+			if [ -n "${HIST_CMD_IS_LOADED[$histno]}" -a "$buff_prev" != "$org" ];then
+				if [ "$lbuff_prev" = "${org:0:${#lbuff_prev}}" ];then
+					dbv 1
+					bmod="$org"
+				fi
+			fi
+			dbv 4
+		fi
+		if [ -n "$bmod" ];then
+			dbv mod
+			HIST_CMD_BUFF_MOD[$histno]="$buff_prev"
+			#echo $histno $HISTNO $buff_prev ${HIST_CMD_BUFF_ORG[$histno]} $BUFFER
+			case $mode in
+			up)
+				zle .down-history
+				;;
+			down)
+				zle .up-history
+				;;
+			esac
+			HISTNO=$histno
+			BUFFER="$bmod"
+			if [[ $mode =~ up\|down ]]; then
+				CURSOR=${#BUFFER}
+			elif [[ $mode =~ forward\|backward ]]; then
+				CURSOR=${#lbuff_prev}
+			fi
+			if [ "${HIST_DIR[$histno]}" != "$PWD" ];then
+				cd "${HIST_DIR[$histno]}"
+				zle reset-prompt
+			fi
+		else
+			dbv ${1%%-*}
+			if [ -z "${HIST_CMD_IS_LOADED[$HISTNO]}" ];then
+				dbv loaded=${HIST_CMD_IS_LOADED[$HISTNO]}
+				if [ -s ~/.zsh_history_pwd.d/$HISTNO ];then
+					read -r d_cur < ~/.zsh_history_pwd.d/$HISTNO
+				else
+					dbv not load
+				fi
+				if [ "$d_cur" != "$PWD" ];then
+					cd $d_cur
+					zle reset-prompt
+				fi
+				HIST_DIR[$HISTNO]="$d_cur"
+				local buff
+				local btmp
+				local hstr
+				local hstr_set
+				local buffer_set
+				if [ -s ~/.zsh_history_raw.d/$HISTNO ];then
+					while IFS= read -r btmp; do
+						if [ -z "$buff" ];then
+							buff="$btmp"
+						else
+  							buff="$buff
+$btmp"
+  						fi
+					done < ~/.zsh_history_raw.d/$HISTNO
+					if [[ "$buff" == *$'\n'* ]]; then
+						dbv buffer set 1 $HISTNO buff=$buff
+						BUFFER="$buff"
+						buffer_set=1
+					else
+						hstr="`history $HISTNO $HISTNO`"
+						hstr="${hstr#* }"
+						hstr_set=1
+						! [[ "$hstr" == *'\n'* ]]
+						dbv "$hstr" contain '\\n' $?
+						if ! [[ "$hstr" == *'\n'* ]]; then
+							dbv setting 2 $HISTNO buff=$buff
+							BUFFER="$buff"
+							buffer_set=1
+						else
+							dbv not setting buff
+						fi
+					fi
+				else
+					dbv not read
+				fi
+				HIST_CMD_BUFF_MOD[$HISTNO]="$BUFFER"
+				HIST_CMD_BUFF_ORG[$HISTNO]="$BUFFER"
+				HIST_CMD_IS_LOADED[$HISTNO]=1
+				dbv cursor $CURSOR=${#BUFFER}
+			else
+				if [ $histno = $lastno ];then
+					HIST_CMD_BUFF_MOD[$histno]="$buff_prev"
+				fi
+				BUFFER="${HIST_CMD_BUFF_MOD[$HISTNO]}"
+				dbv 550 $BUFFER
+				if [ "${HIST_DIR[$HISTNO]}" != "$PWD" ];then
+					cd "${HIST_DIR[$HISTNO]}"
+					zle reset-prompt
+				fi
+			fi
+			if [[ ${1%-*} =~ up\|down ]];then
+				CURSOR=${#BUFFER}
+			elif [[ ${1##*-} =~ backward\|forward ]];then
+				CURSOR=$cur_prev
+			fi
+		fi
+	elif [ $histno = $lastno ];then
+		dbv $histno = $lastno
+		dbv $mode $buff_prev
+		if [ "$mode" = down -a "$buff_prev" != "" ];then
+			HIST_CMD_BUFF_MOD[$histno]="$buff_prev"
+			BUFFER=""
+		fi
+	fi
 }
 
-function up-line-or-history-hook(){
-	D_HISTNO=
-	zle .up-line-or-history
-	hist_set_cd "$HISTNO" "$HOME" "$PWD"
-}
+to_hook=(
+	up-line-or-history
+	down-line-or-history
+	up-history
+	down-history
+	history-beginning-search-backward
+	history-beginning-search-forward
+	beginning-of-history
+	end-of-history
+)
 
-function down-line-or-history-hook(){
-	D_HISTNO=
-	zle .down-line-or-history
-	hist_set_cd "$HISTNO" "$HOME" "$PWD"
+for i in ${to_hook[@]}; do
+	eval "$i(){
+		x-history-hook $i
+	}"
+	zle -N $i
+done
+
+
+send-break(){
+	local d_cur
+	local lastno=$((`__cur_hist` + 1))
+	if [ -s ~/.zsh_history_pwd.d/$lastno ];then
+		read -r d_cur < ~/.zsh_history_pwd.d/$lastno
+		cd $d_cur
+	fi
+	zle .send-break
 }
+zle -N send-break
+
 
 function dir-history(){
 	local mode=$1 # back or forward
@@ -494,7 +693,7 @@ function dir-history(){
 		D_HISTNO=$HISTNO
 		D_CUR=
 		if [ -s "~/.zsh_history_pwd.d/$D_HISTNO" ];then
-			read D_CUR < "~/.zsh_history_pwd.d/$D_HISTNO"
+			read -r D_CUR < "~/.zsh_history_pwd.d/$D_HISTNO"
 		fi
 		if [ -z "$D_CUR" ];then
 			D_CUR="$PWD"
@@ -545,7 +744,7 @@ function dir-history(){
 #						echo 7
 #						echo 100
 #						cat ~/.zsh_history_pwd.d/$D_HISTNO
-						read D_CUR < ~/.zsh_history_pwd.d/$D_HISTNO
+						read -r D_CUR < ~/.zsh_history_pwd.d/$D_HISTNO
 #						echo $D_CUR
 						if [ -n "$D_CUR" -a "$d_cur_org" != "$D_CUR" -a -z "${D_DIR2HNO[$D_CUR]}" ];then
 #							echo 8
@@ -578,30 +777,35 @@ function dir-history(){
 #		echo 14
 	fi
 #	echo 15
-	if [ -n "$D_CLINE" ];then
-#		echo 16
-		if [ "$D_CUR" = "$PWD" ];then
-			BUFFER=
-		elif [ "$D_CUR" = "$HOME" ];then
-			BUFFER='~/'
-		else
-			local b
-			if [ $D_CUR != "/" ];then
-				local _D_CUR="$(escape_special_chars D_CUR)"
-				if [ ${D_CUR:0:$((${#PWD} + 1))} = $PWD/ ]; then
-					BUFFER="${_D_CUR#$PWD/}"/
-				elif [ ${D_CUR:0:$((${#HOME} + 1))} = $HOME/ ]; then
-					BUFFER="~""/${_D_CUR#$HOME/}"/
-				else
-					BUFFER="$_D_CUR"/
-				fi
+	if [ -z "$RESET_PROMPT" ];then
+		if [ -n "$D_CLINE" ];then
+	#		echo 16
+			if [ "$D_CUR" = "$PWD" ];then
+				BUFFER=
+			elif [ "$D_CUR" = "$HOME" ];then
+				BUFFER='~/'
 			else
-				BUFFER=/
+				local b
+				if [ $D_CUR != "/" ];then
+					local _D_CUR="$(escape_special_chars D_CUR)"
+					if [ ${D_CUR:0:$((${#PWD} + 1))} = $PWD/ ]; then
+						BUFFER="${_D_CUR#$PWD/}"/
+					elif [ ${D_CUR:0:$((${#HOME} + 1))} = $HOME/ ]; then
+						BUFFER="~""/${_D_CUR#$HOME/}"/
+					else
+						BUFFER="$_D_CUR"/
+					fi
+				else
+					BUFFER=/
+				fi
 			fi
 		fi
+	#	echo 17
+		hist_set_cd "$D_HISTNO" "$HOME" "$PWD"
+	else
+		cd "$D_CUR"
+		zle reset-prompt
 	fi
-#	echo 17
-	hist_set_cd "$D_HISTNO" "$HOME" "$PWD"
 }
 
 function escape_special_chars {
@@ -620,14 +824,37 @@ dir-history-forward(){
 }
 
 
+dir-history-back-prompt-change-back(){
+	RESET_PROMPT=1
+	dir-history back
+	RESET_PROMPT=
+}
+
+
+dir-history-back-prompt-change-forward(){
+	RESET_PROMPT=1
+	dir-history forward
+	RESET_PROMPT=
+}
+
+
 zle -N dir-history-back dir-history-back
 zle -N dir-history-forward dir-history-forward
 
+bindkey "^[[1;5D" dir-history-back-prompt-change-back
+bindkey "^[[1;5C" dir-history-back-prompt-change-forward
 
-zle -N history-beginning-search-backward-end-pwd history-beginning-search-backward-end-pwd
-zle -N history-beginning-search-forward-end-pwd history-beginning-search-forward-end-pwd
-zle -N up-line-or-history-hook up-line-or-history-hook
-zle -N down-line-or-history-hook down-line-or-history-hook
+zle -N dir-history-back-prompt-change-back dir-history-back-prompt-change-back
+zle -N dir-history-back-prompt-change-forward dir-history-back-prompt-change-forward
+
+#zle -N history-beginning-search-backward-end-pwd history-beginning-search-backward-end-pwd
+#zle -N history-beginning-search-forward-end-pwd history-beginning-search-forward-end-pwd
+#zle -N up-line-or-history-hook up-line-or-history-hook
+#zle -N down-line-or-history-hook down-line-or-history-hook
+#zle -N up-line-or-history
+#zle -N down-line-or-history
+#zle -N history-beginning-search-backward
+#zle -N history-beginning-search-forward
 
 
 ## zsh editor
@@ -675,6 +902,7 @@ case "${UID}" in
 	mode_color="%{${fg[cyan]}%}"
 	;;
 esac
+
 PROMPT="${bold_start}[$mode_color%n@%m %{$fg[yellow]%}%~%{${reset_color}%}${bold_start}]${prompt_symbol_with_color}$bold_end "
 RPROMPT="%{${fg[magenta]}%}%*%{${reset_color}%}"
 
@@ -901,7 +1129,31 @@ alias axel="axel --num-connections=10"
 alias vi="vim"
 
 
-fnd(){ }
+fnd(){
+	local r
+	if [[ $RAW_CMD_LINE =~ (^|\\W)fnd\\s+([^\|\ \t\<\>]+) ]];then
+		r="${match[2]}"
+		if [[ ${RAW_CMD_LINE:$MEND} =~ (^|\W)fnd\s ]];then
+			echo "fnd: Error: multiple fnd found in the command line" >&2
+			return 255
+		fi
+	fi
+	if [ -n "$r" ];then
+		local fn="${r##*/}"
+		if [ "$fn" = "$r" ]; then
+			find . -name "$r"
+		else
+			local dn="${r%/*}"
+			if [ "$dn" = "~" ];then
+				dn="$HOME"
+			fi
+			find "$dn" -name "$fn"
+		fi
+	else
+		echo "fnd: Error: missing argument" >&2
+		return 1
+	fi
+}
 
 
 def_ruby '
@@ -956,7 +1208,7 @@ def_ruby '
 '
 
 function trim_spaces {
-  local var=$1
+  local var="${(P)1}"
   var="${var#"${var%%[![:space:]]*}"}"   # 前のスペースを削除
   var="${var%"${var##*[![:space:]]}"}"   # 後のスペースを削除
   echo "$var"
@@ -966,29 +1218,40 @@ function getFirst {
 	echo "$1"
 }
 
-function _raw_cmd_line {
-	export RAW_CMD_LINE="$BUFFER"
-	raw_cmd_line "$BUFFER"
-	if [ -n "$raw_cmd_line" ]; then
-		BUFFER="$raw_cmd_line"
-	fi
-	local var="$(getFirst $BUFFER)"
+setopt +o nomatch
+
+function __raw_cmd_line {
+	local histno=$((`__cur_hist` + 1))
+	dbv __raw_cmd_line $histno "$PREBUFFER$BUFFER"
+	echo "$PWD" > ~/.zsh_history_pwd.d/$histno
+	mkdir -p ~/.zsh_history_raw.d
+	echo "$PREBUFFER$BUFFER" > ~/.zsh_history_raw.d/$histno
+	#raw_cmd_line "$BUFFER"
+	#if [ -n "$raw_cmd_line" ]; then
+	#	BUFFER="$raw_cmd_line"
+	#fi
+	export RAW_CMD_LINE="$PREBUFFER$BUFFER"
+	local var="$(trim_spaces BUFFER)"
+	var=${var%% *}
 	if [ "${var: -1:1}" = "/" -a -d "${var%?}" ];then
 		cd "${var%?}"
+		zle reset-prompt
 	else
+		HIST_CMD_BUFF_MOD=()
+		HIST_CMD_IS_LOADED=()
 		zle accept-line
 	fi
 }
 
-function _raw_cmd_line_shift {
+function _raw_cmd_line {
 	not_cd_hist_cd=
-	_raw_cmd_line
+	__raw_cmd_line
 }
 
 
 function _raw_cmd_line_shift {
 	not_cd_hist_cd=1
-	_raw_cmd_line
+	__raw_cmd_line
 }
 
 
@@ -1001,6 +1264,22 @@ bindkey '^J' raw_cmd_line_shift_widget
 if [ -f $R/etc/colorrc ]; then
     eval `dircolors $R/etc/colorrc`
 fi
+
+def_ruby '
+	def sendInt proc, lag
+		proc = proc.to_i
+		lag = lag.to_f
+		Thread.new do
+			Thread.pass
+			sleep lag
+			Process.kill :INT, proc
+		end
+	end
+'
+
+hiscd(){
+	
+}
 
 
 enable_bracketed_mode () {
