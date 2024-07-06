@@ -131,6 +131,7 @@ zle -N bracketed-paste bracketed-paste-magic
 HISTFILE=${HOME}/.zsh_history
 HISTSIZE=50000
 SAVEHIST=50000
+
 setopt hist_ignore_dups     # ignore duplication command history list
 setopt share_history        # share command history data
 
@@ -205,7 +206,6 @@ __one_arg(){
 __cur_hist(){
 	__one_arg `history -1`
 }
-
 
 mkdir -p "$HOME/.tmp/Yk/zsh/zsh.local"
 
@@ -473,27 +473,31 @@ typeset -g -A FILE_CONTENT
 PROG_NAME="$0"
 
 
-dbv(){
-	local ft="${funcfiletrace[1]}"
-	local lno=${ft##*:}
-	local file=${ft%:*}
-	local id
-	local ln
-	local lns
-	if [ -z "${FILE_IDS[$file]}" ];then
-		id=$RANDOM$RANDOM$RANDOM
-		FILE_IDS[$file]=$id
-		while IFS= read -r ln; do
-			eval "FILE_CONTENT_$id+=(\"\$ln\")"
-		done < $file
-	else
-		id=${FILE_IDS[$file]}
-	fi
-	eval "ln=\"\${FILE_CONTENT_$id""[$lno]}\""
-	ln="${ln#*dbv}"
-	mkdir -p ~/.tmp/log/zsh_dbv
-	echo "`date +"%y-%m-%d %H:%M:%S.%N"` $0[$$] $file:$lno `trim_spaces ln` = $@" >> ~/.tmp/log/zsh_dbv/${PROG_NAME##*/}.log
-}
+if [ -n "$DEBUG" ];then
+	dbv(){
+		local ft="${funcfiletrace[1]}"
+		local lno=${ft##*:}
+		local file=${ft%:*}
+		local id
+		local ln
+		local lns
+		if [ -z "${FILE_IDS[$file]}" ];then
+			id=$RANDOM$RANDOM$RANDOM
+			FILE_IDS[$file]=$id
+			while IFS= read -r ln; do
+				eval "FILE_CONTENT_$id+=(\"\$ln\")"
+			done < $file
+		else
+			id=${FILE_IDS[$file]}
+		fi
+		eval "ln=\"\${FILE_CONTENT_$id""[$lno]}\""
+		ln="${ln#*dbv}"
+		mkdir -p ~/.tmp/log/zsh_dbv
+		echo "`date +"%y-%m-%d %H:%M:%S.%N"` $PROG_NAME""[$$] $file:$lno `trim_spaces ln` = $@" >> ~/.tmp/log/zsh_dbv/${PROG_NAME##*/}.log
+	}
+else
+	dbv(){ }
+fi
 
 x-history-hook(){
 	D_HISTNO=
@@ -519,7 +523,6 @@ x-history-hook(){
 	local lbuff_prev="$LBUFFER"
 	local cur_prev="$CURSOR"
 	zle .$1
-	HIST_HOOK_PREV=$1
 	if [ $histno != $HISTNO ];then
 		dbv $?, $1, $histno, $HISTNO, ${HIST_CMD_IS_LOADED[$histno]}, $buff_prev, ${HIST_CMD_BUFF_ORG[$histno]}
 		local bmod
@@ -1220,28 +1223,50 @@ function getFirst {
 
 setopt +o nomatch
 
+ORG_PWD="$PWD"
+
 function __raw_cmd_line {
 	local histno=$((`__cur_hist` + 1))
 	dbv __raw_cmd_line $histno "$PREBUFFER$BUFFER"
 	echo "$PWD" > ~/.zsh_history_pwd.d/$histno
 	mkdir -p ~/.zsh_history_raw.d
-	echo "$PREBUFFER$BUFFER" > ~/.zsh_history_raw.d/$histno
-	#raw_cmd_line "$BUFFER"
-	#if [ -n "$raw_cmd_line" ]; then
-	#	BUFFER="$raw_cmd_line"
-	#fi
 	export RAW_CMD_LINE="$PREBUFFER$BUFFER"
+	echo "$RAW_CMD_LINE" > ~/.zsh_history_raw.d/$histno
 	local var="$(trim_spaces BUFFER)"
 	var=${var%% *}
-	if [ "${var: -1:1}" = "/" -a -d "${var%?}" ];then
-		cd "${var%?}"
-		zle reset-prompt
+	if [ -z $var ];then
+		cd $ORG_PWD
+		zle accept-line
 	else
+		if [ "${var: -1:1}" = "/" -a -d "${var%?}" ];then
+			BUFFER="${var%?}"
+		fi
 		HIST_CMD_BUFF_MOD=()
 		HIST_CMD_IS_LOADED=()
 		zle accept-line
+		ORG_PWD="$PWD"
+		echo $histno > ~/.zsh_history_raw.d/max
+		echo $histno > ~/.zsh_history_pwd.d/max
 	fi
 }
+
+
+trap "zle reset-prompt" USR1
+
+
+zle-line-init() {
+	if [ -z "$INITIAL_HISTNO" ];then
+		INITIAL_HISTNO=$HISTNO
+		
+	fi
+	dbv zle-line-init $HISTNO $histno $ORG_PWD $PWD
+	if [ "$ORG_PWD" != "$PWD" ];then
+		dbv resetting from $ORG_PWD to $PWD
+		cd "$ORG_PWD"
+		kill -s SIGUSR1 $$
+	fi
+}
+zle -N zle-line-init
 
 function _raw_cmd_line {
 	not_cd_hist_cd=
