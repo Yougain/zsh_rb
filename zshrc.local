@@ -154,34 +154,34 @@ def_ruby '
 		hist_set_cd_direct d, home, pwd
     end
 	def hist_set_cd_direct d, home, pwd
-		print "\x1b7"
-		STDOUT.flush
-		system "tput cup 0 0"
-	    system "tput hpa 999"
-		print "\x1b[35m"
-		STDOUT.flush
+		#print "\x1b7"
+		#STDOUT.flush
+		#system "tput cup 0 0"
+	    #system "tput hpa 999"
+		#print "\x1b[35m"
+		#STDOUT.flush
 		begin
 	        if d && !(d = d.strip).empty? && d != pwd && File.directory?(d)
-			    prev_sz = hist_cmd.size # IO.read(mf).to_i rescue 0
-			    if prev_sz > d.size
-		    	    print "\x1b[#{prev_sz - 1}D"
-	    	    	print " " * (prev_sz - d.size)
-			    else
-			        print "\x1b[#{d.size - 1}D"
-			    end
-    			print d
+			    #prev_sz = hist_cmd.size # IO.read(mf).to_i rescue 0
+			    #if prev_sz > d.size
+		    	#    print "\x1b[#{prev_sz - 1}D"
+	    	   # 	print " " * (prev_sz - d.size)
+			    #else
+			     #   print "\x1b[#{d.size - 1}D"
+			    #end
+    			#print d
 				@hist_cmd = d
 			else
-		        prev_sz = hist_cmd.size #IO.read(mf).to_i rescue 0
-	    	    if prev_sz != 0
-	        	    print "\x1b[#{prev_sz - 1}D"
-		            print " " * prev_sz
-				end
+		        #prev_sz = hist_cmd.size #IO.read(mf).to_i rescue 0
+	    	    #if prev_sz != 0
+	        	#    print "\x1b[#{prev_sz - 1}D"
+		        #    print " " * prev_sz
+				#end
 				@hist_cmd = ""
 			end
 		ensure
-			print "\x1b[0m\x1b8"
-			STDOUT.flush
+			#print "\x1b[0m\x1b8"
+			#STDOUT.flush
 		end
 	end
 	def hist_cmd
@@ -190,15 +190,15 @@ def_ruby '
 	def clear_hist_cd
 		if @hist_cmd && @hist_cmd != ""
 			ret = @hist_cmd.clone
-			print "\x1b7"
-			system "tput cup 0 0"
-			system "tput hpa 999"
-			ds = @hist_cmd.size # IO.read(mf).to_i rescue 0
-			print "\x1b[#{ds - 1}D\x1b[35m"
-			print " " * (ds)
-			STDOUT.flush
-			print "\x1b[0m\x1b8"
-			STDOUT.flush
+			#print "\x1b7"
+			#system "tput cup 0 0"
+			#system "tput hpa 999"
+			#ds = @hist_cmd.size # IO.read(mf).to_i rescue 0
+			#print "\x1b[#{ds - 1}D\x1b[35m"
+			#print " " * (ds)
+			#STDOUT.flush
+			#print "\x1b[0m\x1b8"
+			#STDOUT.flush
 			@hist_cmd = ""
 			ret
 		else
@@ -472,7 +472,7 @@ else
 fi
 
 preexec() {
-	dbv preexec $@
+	#dbv preexec $@
 	clear_hist_cd
 	D_HISTNO=
 	if [ "$ST_hist" != "1" ]; then
@@ -1483,6 +1483,7 @@ ORG_PWD="$PWD"
 
 function __raw_cmd_line {
 	local histno=$((`__cur_hist` + 1))
+	ORG_HISTNO=$histno
 	dbv __raw_cmd_line $histno "$PREBUFFER$BUFFER"
 	echo "$PWD" > ~/.zsh_history_pwd.d/$((histno + HISTNO_DIFF))
 	mkdir -p ~/.zsh_history_raw.d
@@ -1500,7 +1501,6 @@ function __raw_cmd_line {
 		HIST_CMD_BUFF_MOD=()
 		HIST_CMD_IS_LOADED=()
 		zle accept-line
-		ORG_PWD="$PWD"
 		echo $((histno + HISTNO_DIFF)) > ~/.zsh_history_raw_pwd_max
 	fi
 }
@@ -1514,7 +1514,7 @@ zle-line-init() {
 		INITIAL_HISTNO=$HISTNO
 		local tmp
 		read tmp < ~/.zsh_history_raw_pwd_max
-		if [[ $tmp =~ ^[0-9]+$ ]];then
+		if [[ $tmp =~ ^[0-9]+$ ]] && ((tmp - INITIAL_HISTNO > 0));then
 			HISTNO_DIFF=$((tmp - INITIAL_HISTNO))
 		else
 			HISTNO_DIFF=0
@@ -1531,10 +1531,12 @@ zle-line-init() {
 		"
 	fi
 	dbv zle-line-init $HISTNO $histno $ORG_PWD $PWD
-	if [ "$ORG_PWD" != "$PWD" ];then
+	if [ "$ORG_HISTNO" = "$HISTNO" ];then
 		dbv resetting from $ORG_PWD to $PWD
 		cd "$ORG_PWD"
 		kill -s SIGUSR2 $$
+	else
+		ORG_PWD="$PWD"
 	fi
 }
 zle -N zle-line-init
