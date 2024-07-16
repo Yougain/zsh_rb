@@ -1,7 +1,10 @@
 #!/bin/env ruby
 
+$debug = false
+
 require 'Yk/path_aux'
 require 'pty'
+require 'Yk/debug2'
 
 R = (_ = "/data/data/com.termux/files/usr")._e? ? _ : ""
 
@@ -108,7 +111,6 @@ fork do
 			fw.sync
 			to_ruby.open do |fr|
 				loop do
-					#require 'Yk/debug2'
 					all = ""
 					while all[-10..-1] != "\0\0\0\0\0\0\0\0\0\n"
 						IO.select [fr]

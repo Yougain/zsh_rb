@@ -1,5 +1,6 @@
 #!/bin/env zsh
 
+export TTY
 
 if [ -e /data/data/com.termux/files ];then
 		R="/data/data/com.termux/files/usr"
@@ -39,7 +40,10 @@ compinit -u
 
 mkdir -p $HOME/.tmp/Yk/zsh/zsh.local
 
+
+export RUBYOPT=-W0
 eval $(zsh_rb)
+
 # users generic .zshrc file for zsh(1)
 
 # System wide functions and aliases
@@ -71,7 +75,9 @@ case ${UID} in
 	prompt_symbol_with_color="%{${fg[green]}%}\$%{${reset_color}%}"
 esac
 
+
 def_ruby '
+	$debug = false
 	def __first_cmd c = nil
 		if !c
 			"__nocmd__"
@@ -94,12 +100,14 @@ def_ruby '
 	end
 '
 
+
 if [ "$__shell_rnd__" = "" ];then
 	__shell_rnd__=$(( $RANDOM./1<<15 ))
 fi
 
 
 def_ruby '
+	#require "Yk/debug2"
 	def __clear_prev__ tmp
 		require "Yk/path_aux"
 		["cmd", "idle", "cmd-before"].each do |e|
@@ -113,6 +121,7 @@ def_ruby '
 		end
 	end
 '
+
 __clear_prev__ $$
 
 #def_ruby '
@@ -210,50 +219,6 @@ __cur_hist(){
 mkdir -p "$HOME/.tmp/Yk/zsh/zsh.local"
 
 zstyle ':completion:*:default' menu select=2
-preexec() {
-	clear_hist_cd
-	D_HISTNO=
-	if [ "$ST_hist" != "1" ]; then
-		if [ -n "$clear_hist_cd" ]; then
-			if [ -z "$not_cd_hist_cd" ]; then
-				cd $clear_hist_cd
-			fi
-		fi
-		#mkdir -p ~/.zsh_history_pwd.d
-		#local histno=$((`__cur_hist` + 1))
-		#echo $PWD > ~/.zsh_history_pwd.d/$histno
-		#mkdir -p ~/.zsh_history_raw.d
-		#echo $BUFFER > ~/.zsh_history_raw.d/$histno
-	fi
-	local cmd
-	__first_cmd $1
-	cmd=$__first_cmd
-	if [ "$cmd" != "__nocmd__" ]; then
-		case $TERM in
-		xterm*)
-			echo -ne "\033]0;$cmd (${HOST%%.*}/`date +%H:%M:%S`)"; echo -ne "\007"
-		    ;;
-		screen)
-			echo -ne "\033_$cmd (${HOST%%.*}/`date +%H:%M:%S`)"; echo -ne "\033\\"
-		    ;;
-		esac
-		if [ -e $HOME/.tmp/Yk/zsh/zsh.local/cmd.$$.$__shell_rnd__ ];then
-			mv -f "$HOME/.tmp/Yk/zsh/zsh.local/cmd.$$.$__shell_rnd__" "$HOME/.tmp/Yk/zsh/zsh.local/cmd-before.$$.$__shell_rnd__"
-		fi
-		echo -ne $1 > "$HOME/.tmp/Yk/zsh/zsh.local/cmd.$$.$__shell_rnd__"
-		rm -f "$HOME/.tmp/Yk/zsh/zsh.local/idle.$$.$__shell_rnd__"
-	fi
-}
-precmd() {
-	echo -ne > "$HOME/.tmp/Yk/zsh/zsh.local/idle.$$.$__shell_rnd__"
-}
-zshexit(){
-	rm -f "$HOME/.tmp/Yk/zsh/zsh.local/idle.$$.$__shell_rnd__"
-	rm -f "$HOME/.tmp/Yk/zsh/zsh.local/cmd.$$.$__shell_rnd__"
-	rm -f "$HOME/.tmp/Yk/zsh/zsh.local/cmd-before.$$.$__shell_rnd__"
-}
-ST_hist=1 preexec
-ST_hist=0
 
 # auto change directory
 #
@@ -472,6 +437,13 @@ typeset -g -A FILE_CONTENT
 
 PROG_NAME="$0"
 
+function trim_spaces {
+  local var="${(P)1}"
+  var="${var#"${var%%[![:space:]]*}"}"   # 前のスペースを削除
+  var="${var%"${var##*[![:space:]]}"}"   # 後のスペースを削除
+  echo "$var"
+}
+
 
 if [ -n "$DEBUG" ];then
 	dbv(){
@@ -499,6 +471,62 @@ else
 	dbv(){ }
 fi
 
+preexec() {
+	dbv preexec $@
+	clear_hist_cd
+	D_HISTNO=
+	if [ "$ST_hist" != "1" ]; then
+		if [ -n "$clear_hist_cd" ]; then
+			if [ -z "$not_cd_hist_cd" ]; then
+				cd $clear_hist_cd
+			fi
+		fi
+		#mkdir -p ~/.zsh_history_pwd.d
+		#local histno=$((`__cur_hist` + 1))
+		#echo $PWD > ~/.zsh_history_pwd.d/$histno
+		#mkdir -p ~/.zsh_history_raw.d
+		#echo $BUFFER > ~/.zsh_history_raw.d/$histno
+	fi
+	local cmd
+	__first_cmd $1
+	cmd=$__first_cmd
+	if [ "$cmd" != "__nocmd__" ]; then
+		case $TERM in
+		xterm*)
+			echo -ne "\033]0;$cmd (${HOST%%.*}/`date +%H:%M:%S`)"; echo -ne "\007"
+		    ;;
+		screen)
+			echo -ne "\033_$cmd (${HOST%%.*}/`date +%H:%M:%S`)"; echo -ne "\033\\"
+		    ;;
+		esac
+		if [ -e $HOME/.tmp/Yk/zsh/zsh.local/cmd.$$.$__shell_rnd__ ];then
+			mv -f "$HOME/.tmp/Yk/zsh/zsh.local/cmd.$$.$__shell_rnd__" "$HOME/.tmp/Yk/zsh/zsh.local/cmd-before.$$.$__shell_rnd__"
+		fi
+		echo -ne $1 > "$HOME/.tmp/Yk/zsh/zsh.local/cmd.$$.$__shell_rnd__"
+		rm -f "$HOME/.tmp/Yk/zsh/zsh.local/idle.$$.$__shell_rnd__"
+	fi
+}
+precmd() {
+	echo -ne > "$HOME/.tmp/Yk/zsh/zsh.local/idle.$$.$__shell_rnd__"
+}
+zshexit(){
+	rm -f "$HOME/.tmp/Yk/zsh/zsh.local/idle.$$.$__shell_rnd__"
+	rm -f "$HOME/.tmp/Yk/zsh/zsh.local/cmd.$$.$__shell_rnd__"
+	rm -f "$HOME/.tmp/Yk/zsh/zsh.local/cmd-before.$$.$__shell_rnd__"
+}
+ST_hist=1 preexec
+ST_hist=0
+
+def_ruby '
+	def dur100
+		@curTime ||= Time.now.to_f
+		ret = (((n = Time.now.to_f) - @curTime) * 100).to_i
+		@curTime = n
+		return ret.to_s
+	end
+'
+#dur100
+
 x-history-hook(){
 	D_HISTNO=
 	local histno=$HISTNO
@@ -522,133 +550,149 @@ x-history-hook(){
 	local buff_prev="$BUFFER"
 	local lbuff_prev="$LBUFFER"
 	local cur_prev="$CURSOR"
-	zle .$1
-	if [ $histno != $HISTNO ];then
-		dbv $?, $1, $histno, $HISTNO, ${HIST_CMD_IS_LOADED[$histno]}, $buff_prev, ${HIST_CMD_BUFF_ORG[$histno]}
-		local bmod
-		local org="${HIST_CMD_BUFF_ORG[$histno]}"
-		if [[ $mode =~ up\|down ]]; then
-			if [ -n "${HIST_CMD_IS_LOADED[$histno]}" -a "$buff_prev" != "$org" ];then
-				dbv 1
-				bmod="$org"
-			elif [ $HISTNO = $lastno -a $mode = down -a "$buff_prev" != "" ];then
-				dbv 2
-				bmod=""
-			elif [ $histno = $lastno -a $mode = up -a "$buff_prev" = "" ];then
-				bmod="${HIST_CMD_BUFF_MOD[$histno]}"
-				dbv 3 $bmod
-			fi
-			dbv 4
-		elif [[ $mode =~ forward\|backward ]]; then
-			if [ -n "${HIST_CMD_IS_LOADED[$histno]}" -a "$buff_prev" != "$org" ];then
-				if [ "$lbuff_prev" = "${org:0:${#lbuff_prev}}" ];then
+	while true; do
+		zle .$1
+		if [ $histno != $HISTNO ];then
+			dbv $?, $1, $histno, $HISTNO, ${HIST_CMD_IS_LOADED[$histno]}, $buff_prev, ${HIST_CMD_BUFF_ORG[$histno]}
+			local bmod
+			local org="${HIST_CMD_BUFF_ORG[$histno]}"
+			if [[ $mode =~ up\|down ]]; then
+				if [ -n "${HIST_CMD_IS_LOADED[$histno]}" -a "$buff_prev" != "$org" ];then
 					dbv 1
 					bmod="$org"
+				elif [ $HISTNO = $lastno -a $mode = down -a "$buff_prev" != "" ];then
+					dbv 2
+					bmod=""
+				elif [ $histno = $lastno -a $mode = up -a "$buff_prev" = "" ];then
+					bmod="${HIST_CMD_BUFF_MOD[$histno]}"
+					dbv 3 $bmod
 				fi
-			fi
-			dbv 4
-		fi
-		if [ -n "$bmod" ];then
-			dbv mod
-			HIST_CMD_BUFF_MOD[$histno]="$buff_prev"
-			#echo $histno $HISTNO $buff_prev ${HIST_CMD_BUFF_ORG[$histno]} $BUFFER
-			case $mode in
-			up)
-				zle .down-history
-				;;
-			down)
-				zle .up-history
-				;;
-			esac
-			HISTNO=$histno
-			BUFFER="$bmod"
-			if [[ $mode =~ up\|down ]]; then
-				CURSOR=${#BUFFER}
+				dbv 4
 			elif [[ $mode =~ forward\|backward ]]; then
-				CURSOR=${#lbuff_prev}
-			fi
-			if [ "${HIST_DIR[$histno]}" != "$PWD" ];then
-				cd "${HIST_DIR[$histno]}"
-				zle reset-prompt
-			fi
-		else
-			dbv ${1%%-*}
-			if [ -z "${HIST_CMD_IS_LOADED[$HISTNO]}" ];then
-				dbv loaded=${HIST_CMD_IS_LOADED[$HISTNO]}
-				if [ -s ~/.zsh_history_pwd.d/$HISTNO ];then
-					read -r d_cur < ~/.zsh_history_pwd.d/$HISTNO
-				else
-					dbv not load
+				if [ -n "${HIST_CMD_IS_LOADED[$histno]}" -a "$buff_prev" != "$org" ];then
+					if [ "$lbuff_prev" = "${org:0:${#lbuff_prev}}" ];then
+						dbv 1
+						bmod="$org"
+					fi
 				fi
-				if [ "$d_cur" != "$PWD" ];then
-					cd $d_cur
-					zle reset-prompt
+				dbv 4
+			fi
+			if [ -n "$bmod" ];then
+				dbv mod
+				HIST_CMD_BUFF_MOD[$histno]="$buff_prev"
+				#echo $histno $HISTNO $buff_prev ${HIST_CMD_BUFF_ORG[$histno]} $BUFFER
+				case $mode in
+				up)
+					zle .down-history
+					;;
+				down)
+					zle .up-history
+					;;
+				forward)
+					zle .history-beginning-search-backward
+					;;
+				backward)
+					zle .history-beginning-search-forward
+					;;
+				esac
+				HISTNO=$histno
+				BUFFER="$bmod"
+				if [[ $mode =~ up\|down ]]; then
+					CURSOR=${#BUFFER}
+				elif [[ $mode =~ forward\|backward ]]; then
+					CURSOR=${#lbuff_prev}
 				fi
-				HIST_DIR[$HISTNO]="$d_cur"
-				local buff
-				local btmp
-				local hstr
-				local hstr_set
-				local buffer_set
-				if [ -s ~/.zsh_history_raw.d/$HISTNO ];then
-					while IFS= read -r btmp; do
-						if [ -z "$buff" ];then
-							buff="$btmp"
-						else
-  							buff="$buff
-$btmp"
-  						fi
-					done < ~/.zsh_history_raw.d/$HISTNO
-					if [[ "$buff" == *$'\n'* ]]; then
-						dbv buffer set 1 $HISTNO buff=$buff
-						BUFFER="$buff"
-						buffer_set=1
+				# not necessary
+				#if [ "${HIST_DIR[$histno]}" != "$PWD" ];then
+				#	cd "${HIST_DIR[$histno]}"
+				#	zle reset-prompt
+				#fi
+			else
+				dbv ${1%%-*}
+				if [ -z "${HIST_CMD_IS_LOADED[$HISTNO]}" ];then
+					dbv loaded=${HIST_CMD_IS_LOADED[$HISTNO]}
+					if [ -s ~/.zsh_history_pwd.d/$HISTNO ];then
+						read -r d_cur < ~/.zsh_history_pwd.d/$HISTNO
 					else
-						hstr="`history $HISTNO $HISTNO`"
-						hstr="${hstr#* }"
-						hstr_set=1
-						! [[ "$hstr" == *'\n'* ]]
-						dbv "$hstr" contain '\\n' $?
-						if ! [[ "$hstr" == *'\n'* ]]; then
-							dbv setting 2 $HISTNO buff=$buff
+						dbv not load
+					fi
+					if [ "$d_cur" != "$PWD" ];then
+						if [ -n "$2" ];then
+							continue
+						fi
+						cd $d_cur
+						zle reset-prompt
+					fi
+					HIST_DIR[$HISTNO]="$d_cur"
+					local buff
+					local btmp
+					local hstr
+					local hstr_set
+					local buffer_set
+					if [ -s ~/.zsh_history_raw.d/$HISTNO ];then
+						while IFS= read -r btmp; do
+							if [ -z "$buff" ];then
+								buff="$btmp"
+							else
+	  							buff="$buff
+	$btmp"
+	  						fi
+						done < ~/.zsh_history_raw.d/$HISTNO
+						if [[ "$buff" == *$'\n'* ]]; then
+							dbv buffer set 1 $HISTNO buff=$buff
 							BUFFER="$buff"
 							buffer_set=1
 						else
-							dbv not setting buff
+							hstr="`history $HISTNO $HISTNO`"
+							hstr="${hstr#* }"
+							hstr_set=1
+							! [[ "$hstr" == *'\n'* ]]
+							dbv "$hstr" contain '\\n' $?
+							if ! [[ "$hstr" == *'\n'* ]]; then
+								dbv setting 2 $HISTNO buff=$buff
+								BUFFER="$buff"
+								buffer_set=1
+							else
+								dbv not setting buff
+							fi
 						fi
+					else
+						dbv not read
 					fi
+					HIST_CMD_BUFF_MOD[$HISTNO]="$BUFFER"
+					HIST_CMD_BUFF_ORG[$HISTNO]="$BUFFER"
+					HIST_CMD_IS_LOADED[$HISTNO]=1
+					dbv cursor $CURSOR=${#BUFFER}
 				else
-					dbv not read
+					if [ "${HIST_DIR[$HISTNO]}" != "$PWD" ];then
+						if [ -n "$2" ];then
+							continue
+						fi
+						cd "${HIST_DIR[$HISTNO]}"
+						zle reset-prompt
+					fi
+					if [ $histno = $lastno ];then
+						HIST_CMD_BUFF_MOD[$histno]="$buff_prev"
+					fi
+					BUFFER="${HIST_CMD_BUFF_MOD[$HISTNO]}"
+					dbv 550 $BUFFER
 				fi
-				HIST_CMD_BUFF_MOD[$HISTNO]="$BUFFER"
-				HIST_CMD_BUFF_ORG[$HISTNO]="$BUFFER"
-				HIST_CMD_IS_LOADED[$HISTNO]=1
-				dbv cursor $CURSOR=${#BUFFER}
-			else
-				if [ $histno = $lastno ];then
-					HIST_CMD_BUFF_MOD[$histno]="$buff_prev"
-				fi
-				BUFFER="${HIST_CMD_BUFF_MOD[$HISTNO]}"
-				dbv 550 $BUFFER
-				if [ "${HIST_DIR[$HISTNO]}" != "$PWD" ];then
-					cd "${HIST_DIR[$HISTNO]}"
-					zle reset-prompt
+				if [[ ${1%-*} =~ up\|down ]];then
+					CURSOR=${#BUFFER}
+				elif [[ ${1##*-} =~ backward\|forward ]];then
+					CURSOR=$cur_prev
 				fi
 			fi
-			if [[ ${1%-*} =~ up\|down ]];then
-				CURSOR=${#BUFFER}
-			elif [[ ${1##*-} =~ backward\|forward ]];then
-				CURSOR=$cur_prev
+		elif [ $histno = $lastno ];then
+			dbv $histno = $lastno
+			dbv $mode $buff_prev
+			if [ "$mode" = down -a "$buff_prev" != "" ];then
+				HIST_CMD_BUFF_MOD[$histno]="$buff_prev"
+				BUFFER=""
 			fi
 		fi
-	elif [ $histno = $lastno ];then
-		dbv $histno = $lastno
-		dbv $mode $buff_prev
-		if [ "$mode" = down -a "$buff_prev" != "" ];then
-			HIST_CMD_BUFF_MOD[$histno]="$buff_prev"
-			BUFFER=""
-		fi
-	fi
+		break
+	done
 }
 
 to_hook=(
@@ -682,7 +726,224 @@ send-break(){
 zle -N send-break
 
 
+def_ruby '
+	Log = "/home/yougain/zshrc.local.log"
+	p > Log
+	PwdList = Hash.new
+	HistList = Hash.new
+	HistListKeys = []
+	PwdListKeys = []
+	require "thread"
+	Mutex = Mutex.new
+	T = Thread.new do
+		p
+		Thread.pass
+#		%W{pwd raw}.zip [PwdList, HistList] do |t, lst|
+#			(ENV["HOME"] / ".zsh_history_#{t}.d").each_entry do |ent|
+#				if ent =~ /\/(\d+)$/
+#					item = t == "raw" ? ent.read.strip : ent.readline.strip
+#					if !item.empty?
+#						lst[$1.to_i] = item
+#					end
+#				end
+#			end
+#		end
+#		HistListKeys.replace HistList.keys.sort.reverse
+#		PwdListKeys.replace PwdList.keys.sort.reverse
+		@@max = (ENV["HOME"] / ".zsh_history_raw_pwd_max").read.to_i rescue 0
+		p @@max
+		max_10 = @@max - 10 < 1 ? 1 : @@max - 10
+		if defined?(@@d_histno) && max_10 > @@d_histno
+			max_10 = @@d_histno
+		end
+		addEach = Proc.new do |i|
+			%W{pwd raw}.zip [PwdList, HistList], [PwdListKeys, HistListKeys], [] do |t, lst, lstKeys|
+				item = nil
+				if (ent = ENV["HOME"] / ".zsh_history_#{t}.d" / i.to_s)._e?
+					item = t == "raw" ? ent.read.strip : ent.readline.strip
+					if item.empty?
+						item = nil
+					end
+				end
+				Mutex.synchronize do
+					lst[i] = item
+					lstKeys.push i if item
+				end
+			end
+		end
+		@@max.downto max_10 do |i|
+			p i
+			addEach[i]
+		end
+		p PwdList.size
+		p PwdListKeys.size
+		Thread.new do
+			Thread.pass
+			max_10.downto 1 do |i|
+				addEach[i]
+			end
+		end
+		p
+		Thread.pass
+	end
+	def _listEach lst, hno
+		start = lst.bsearch_index{ _1 <= hno }
+		[start .. lst.size - 1, 0 ... start].each do |r|
+			r.each do |i|
+				yield lst[i]
+			end
+		end
+	end
+	def getDHist d_histno
+		p
+		d_histno = d_histno.to_i
+		@@d_histno = d_histno
+		T.join
+		p PwdList.size
+		p PwdListKeys.size
+		if PwdListKeys.empty?
+			p
+			return
+		end
+		p
+		r2, w = IO.pipe
+		r, w2 = IO.pipe
+		pid = fork do
+			p "/dev/tty"._e?
+			p ENV["TTY"]
+			r.close
+			STDOUT.reopen w2
+			w.close
+			STDIN.reopen r2
+			STDERR.reopen ENV["TTY"]
+			if "/dev/tty"._e?
+				Log.write_a "/dev/tty exist"
+			else
+				Log.write_a "/dev/tty do not exist"
+			end
+			"fzf".exec
+			#"strace -f -o /home/yougain/log3 /home/yougain/.fzf/bin/fzf".exec
+		end
+		p "/dev/tty"._e?
+		p ENV["TTY"]
+		p pid
+		p @@max
+		w2.close
+		r2.close
+		Thread.new do
+			begin
+				Thread.pass
+				hash = {}
+				[d_histno.downto(1), @@max.downto(d_histno)].each do |r|
+					r.each do |i|
+						while true
+							ks = nil
+							Mutex.synchronize do
+								ks = !PwdList.key?(i)
+							end
+							if ks
+								sleep 0.1
+								Thread.pass
+							else
+								break
+							end
+						end
+						pwd = PwdList[i]
+						if pwd && !hash.key?(pwd)
+							hash[pwd] = 1
+							p pwd
+							w.write pwd.ln
+							p
+							w.flush
+							p
+						end
+						p
+					end
+				end
+				p
+				w.close
+				p
+			rescue
+				p $!
+			end
+			p
+		end
+		ret = r.read rescue ""
+		p
+		Process.waitpid pid
+		p ret
+		ret
+	end
+	@@d_histno_arr = []
+	@@d_histno_arr_pos = 0
+	@@d_histno_hash = {}
+	def dir_history mode, d_histno, histno, pwd
+		if d_histno.empty?
+			if mode == "backward"
+				d_histno = histno.to_i
+				@@d_histno_arr.clear
+				@@d_histno_hash.clear
+				@@d_histno_hash[pwd] = true
+				@@d_histno_arr.push pwd
+				@@d_histno_arr_pos = 0
+			else
+				return pwd
+			end
+		else
+			d_histno = d_histno.to_i
+		end
+		if mode == "backward"
+			@@d_histno_arr_pos += 1
+			if @@d_histno_arr[@@d_histno_arr_pos]
+				return PwdList[@@d_histno_arr_pos]
+			else
+				[d_histno.downto(1), @@max.downto(d_histno)].each do |r|
+					r.each do |i|
+						d = PwdList[i]
+						if d && !@@d_histno_hash[d]
+							@@d_histno_hash[pwd] = true
+							@@d_histno_arr.push pwd
+							@@d_histno_arr_pos = 0
+							
+						end
+					end
+				end
+			end
+		end
+	end
+'
+
+function dir-history-list(){
+	local hno
+	if [ -n "$D_HISTNO" ]; then
+		hno="$D_HISTNO"
+	else
+		hno="$HISTNO"
+	fi
+	dbv
+	getDHist "$hno"
+	dbv
+	if [ -d "$getDHist" ];then
+		cd $getDHist
+		zle reset-prompt
+	fi
+}
+
 function dir-history(){
+	dbv
+	#dur100
+	#dbv
+	#if ((dur100 < 25)) && [ -n "$D_HISTNO" ]; then
+	#	dbv
+	#	getDHist "$D_HISTNO"
+	#	dbv
+	#	if [ -d "$getDHist" ];then
+	#		cd $getDHist
+	#		zle reset-prompt
+	#	fi
+	#	return
+	#fi
+	#dbv
 	local mode=$1 # back or forward
 	local skip_search=
 #	echo D_HISTNO=$D_HISTNO
@@ -843,9 +1104,12 @@ dir-history-back-prompt-change-forward(){
 
 zle -N dir-history-back dir-history-back
 zle -N dir-history-forward dir-history-forward
+zle -N dir-history-list
 
 bindkey "^[[1;5D" dir-history-back-prompt-change-back
+bindkey "^[[1;5d"  dir-history-list
 bindkey "^[[1;5C" dir-history-back-prompt-change-forward
+bindkey "^[[1;5c"  dir-history-list
 
 zle -N dir-history-back-prompt-change-back dir-history-back-prompt-change-back
 zle -N dir-history-back-prompt-change-forward dir-history-back-prompt-change-forward
@@ -944,7 +1208,6 @@ fi
 def_ruby '
 	def getLVWList
 		require "Yk/path_aux"
-		require "Yk/debug2"
 		require "set"
 		ret = Set.new
 		dids = Hash.new
@@ -1210,13 +1473,6 @@ def_ruby '
 	end
 '
 
-function trim_spaces {
-  local var="${(P)1}"
-  var="${var#"${var%%[![:space:]]*}"}"   # 前のスペースを削除
-  var="${var%"${var##*[![:space:]]}"}"   # 後のスペースを削除
-  echo "$var"
-}
-
 function getFirst {
 	echo "$1"
 }
@@ -1228,10 +1484,10 @@ ORG_PWD="$PWD"
 function __raw_cmd_line {
 	local histno=$((`__cur_hist` + 1))
 	dbv __raw_cmd_line $histno "$PREBUFFER$BUFFER"
-	echo "$PWD" > ~/.zsh_history_pwd.d/$histno
+	echo "$PWD" > ~/.zsh_history_pwd.d/$((histno + HISTNO_DIFF))
 	mkdir -p ~/.zsh_history_raw.d
 	export RAW_CMD_LINE="$PREBUFFER$BUFFER"
-	echo "$RAW_CMD_LINE" > ~/.zsh_history_raw.d/$histno
+	echo "$RAW_CMD_LINE" > ~/.zsh_history_raw.d/$((histno + HISTNO_DIFF))
 	local var="$(trim_spaces BUFFER)"
 	var=${var%% *}
 	if [ -z $var ];then
@@ -1245,25 +1501,40 @@ function __raw_cmd_line {
 		HIST_CMD_IS_LOADED=()
 		zle accept-line
 		ORG_PWD="$PWD"
-		echo $histno > ~/.zsh_history_raw.d/max
-		echo $histno > ~/.zsh_history_pwd.d/max
+		echo $((histno + HISTNO_DIFF)) > ~/.zsh_history_raw_pwd_max
 	fi
 }
 
 
-trap "zle reset-prompt" USR1
+trap "zle reset-prompt" USR2
 
 
 zle-line-init() {
 	if [ -z "$INITIAL_HISTNO" ];then
 		INITIAL_HISTNO=$HISTNO
-		
+		local tmp
+		read tmp < ~/.zsh_history_raw_pwd_max
+		if [[ $tmp =~ ^[0-9]+$ ]];then
+			HISTNO_DIFF=$((tmp - INITIAL_HISTNO))
+		else
+			HISTNO_DIFF=0
+		fi
+		zsh -c "
+			zsh -c '
+				i=1
+				while ((i < $HISTNO_DIFF)); do
+					rm -f ~/.zsh_history_raw.d/\$i
+					rm -f ~/.zsh_history_pwd.d/\$i
+					((++i))
+				done
+			' & > /dev/null 2> /dev/null
+		"
 	fi
 	dbv zle-line-init $HISTNO $histno $ORG_PWD $PWD
 	if [ "$ORG_PWD" != "$PWD" ];then
 		dbv resetting from $ORG_PWD to $PWD
 		cd "$ORG_PWD"
-		kill -s SIGUSR1 $$
+		kill -s SIGUSR2 $$
 	fi
 }
 zle -N zle-line-init
