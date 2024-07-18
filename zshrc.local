@@ -141,71 +141,20 @@ HISTFILE=${HOME}/.zsh_history
 HISTSIZE=50000
 SAVEHIST=50000
 
+zsh <<-END
+	for j in raw pwd; do
+		ls -t ~/.zsh_history_\$j.d | sed -n $HISTSIZE',\$p' | while read i; do
+			if [[ \$i =~ ^[0-9]+$ ]]; then
+				rm -f ~/.zsh_history_\$j.d/\$i
+			fi
+		done
+	done &
+END
+
+
 setopt hist_ignore_dups     # ignore duplication command history list
 setopt share_history        # share command history data
 
-def_ruby '
-    def hist_set_cd hx, home, pwd
-        d = nil
-        f = "#{home}/.zsh_history_pwd.d/#{hx}"
-        if File.exist? f
-            d = IO.read(f).lines[-1].strip
-        end
-		hist_set_cd_direct d, home, pwd
-    end
-	def hist_set_cd_direct d, home, pwd
-		#print "\x1b7"
-		#STDOUT.flush
-		#system "tput cup 0 0"
-	    #system "tput hpa 999"
-		#print "\x1b[35m"
-		#STDOUT.flush
-		begin
-	        if d && !(d = d.strip).empty? && d != pwd && File.directory?(d)
-			    #prev_sz = hist_cmd.size # IO.read(mf).to_i rescue 0
-			    #if prev_sz > d.size
-		    	#    print "\x1b[#{prev_sz - 1}D"
-	    	   # 	print " " * (prev_sz - d.size)
-			    #else
-			     #   print "\x1b[#{d.size - 1}D"
-			    #end
-    			#print d
-				@hist_cmd = d
-			else
-		        #prev_sz = hist_cmd.size #IO.read(mf).to_i rescue 0
-	    	    #if prev_sz != 0
-	        	#    print "\x1b[#{prev_sz - 1}D"
-		        #    print " " * prev_sz
-				#end
-				@hist_cmd = ""
-			end
-		ensure
-			#print "\x1b[0m\x1b8"
-			#STDOUT.flush
-		end
-	end
-	def hist_cmd
-		@hist_cmd || ""
-	end
-	def clear_hist_cd
-		if @hist_cmd && @hist_cmd != ""
-			ret = @hist_cmd.clone
-			#print "\x1b7"
-			#system "tput cup 0 0"
-			#system "tput hpa 999"
-			#ds = @hist_cmd.size # IO.read(mf).to_i rescue 0
-			#print "\x1b[#{ds - 1}D\x1b[35m"
-			#print " " * (ds)
-			#STDOUT.flush
-			#print "\x1b[0m\x1b8"
-			#STDOUT.flush
-			@hist_cmd = ""
-			ret
-		else
-			""
-		end
-	end
-'
 
 __one_arg(){
 	echo -n $1
@@ -487,16 +436,6 @@ set_histno_diff(){
 		else
 			HISTNO_DIFF=0
 		fi
-#		zsh -c "
-#			zsh -c '
-#				i=1
-#				while ((i < $HISTNO_DIFF)); do
-#					rm -f ~/.zsh_history_raw.d/\$i
-#					rm -f ~/.zsh_history_pwd.d/\$i
-#					((++i))
-#				done
-#			' & > /dev/null 2> /dev/null
-#		"
 	elif [ "$1" = "clear" ];then
 		HISTNO_DIFF=
 	fi
