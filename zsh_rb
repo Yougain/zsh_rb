@@ -1,12 +1,7 @@
-#!/bin/env ruby
-
-$debug = false
+#!/usr/bin/env ruby
 
 require 'Yk/path_aux'
 require 'pty'
-require 'Yk/debug2'
-
-R = (_ = "/data/data/com.termux/files/usr")._e? ? _ : ""
 
 zpid = Process.ppid
 ENV.each do |k, v|
@@ -33,7 +28,7 @@ using ProcWithArguments
 
 def get_file_pos expr, pid
 	"/proc/#{pid}/fd".each_entry do |f|
-		l = f.readlink
+		l = f.readlink rescue next
 		if l =~ /^\//
 			l._![:_p?]&.then do |ll|
 				if ll !~ /^\/dev\//
@@ -48,10 +43,15 @@ def get_file_pos expr, pid
 	[nil]
 end
 
+if ENV['TMPDIR_YK']
+		TMP_ROOT = ENV['TMPDIR_YK']
+else
+		TMP_ROOT = "/tmp/Yk.%{$$}"
+end
+(ZSH_RB_TMP = "#{TMP_ROOT}.#{$0.basename}").mkdir_p
+(from_ruby = "#{ZSH_RB_TMP}.#{zpid}.r")._![:_e?]&.mkfifo
+(to_ruby = "#{ZSH_RB_TMP}.#{zpid}.w")._![:_e?]&.mkfifo
 
-"#{R}/tmp/Yk/zsh_rb".mkdir_p
-(from_ruby = "#{R}/tmp/Yk/zsh_rb/#{$0.basename}.#{zpid}.r")._![:_e?]&.mkfifo
-(to_ruby = "#{R}/tmp/Yk/zsh_rb/#{$0.basename}.#{zpid}.w")._![:_e?]&.mkfifo
 
 #"lsof #{from_ruby} 2>/dev/null".read_each_line_p do |ln|
 #	if ln =~ /^ruby\s/
@@ -67,7 +67,7 @@ fork do
 		Process.daemon true
         at_exit do
           %W{r w}.each do |m|
-            "#{R}/tmp/Yk/zsh_rb/#{$0.basename}.*.#{m}".glob.each do |f|
+            "/tmp/#{$0.basename}.*.#{m}".glob.each do |f|
               if f =~ /\.(\d+)\./
                 if !"/proc/#{$1}"._d?
                   f.rm rescue nil
@@ -76,10 +76,38 @@ fork do
             end
           end
         end
-
+		r, w = IO.pipe
+		pid = Process.pid
+		fork do
+			STDERR.reopen("/proc/#{zpid}/fd/2".readlink, "w") rescue nil
+			fp = File.open("#{ENV['HOME']}/.zsh_rb.log", "a")
+			w.close
+			data = ""
+			loop do
+				IO.select [r]
+				begin
+					data << r.readpartial(1024)
+				rescue EOFError
+					break
+				end
+				data.each_line do |ln|
+					if ln[-1] == "\n"
+						lnt = "#{Time.now.strftime("%Y-%m-%d %H:%M:%S")} zsh[#{zpid}]/zsh_rb[#{pid}] #{ln}"
+						begin
+							fp.flock(File::LOCK_EX)
+							STDERR.write lnt
+							fp.write lnt
+						ensure
+							fp.flock(File::LOCK_UN)
+						end
+						data = data[ln.bytesize..-1]
+					end
+				end
+			end
+			exit 0
+		end
 		STDIN.reopen("/proc/#{zpid}/fd/0".readlink) rescue nil
 		STDOUT.reopen("/proc/#{zpid}/fd/1".readlink, "w") rescue nil
-		STDERR.reopen("/proc/#{zpid}/fd/2".readlink, "w") rescue nil
 		Thread.abort_on_exception = true
 		Thread.new do
 			loop do
@@ -111,6 +139,7 @@ fork do
 			fw.sync
 			to_ruby.open do |fr|
 				loop do
+					#require 'tz/debug2'
 					all = ""
 					while all[-10..-1] != "\0\0\0\0\0\0\0\0\0\n"
 						IO.select [fr]
@@ -196,8 +225,12 @@ print <<~END
 			tmp="\0";
 			echo -n "\\0\\0\\0\\0\\0\\0\\0\\0\\0\\n" >&\$to_ruby;
 			read -Erd "\x01" -u \$from_ruby tmp > /dev/null;
+			echo \$tmp >> ~/.zsh_rb_def_ruby_eval.log;
 			eval \$tmp;
 		};
+		if type -f END >/dev/null 2>&1; then;
+			echo "kill \\$zsh_#{zpid}_rb_daemon_pid" | END;
+		fi;
 	fi;
 END
 

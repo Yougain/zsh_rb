@@ -2,12 +2,7 @@
 
 . $(dirname $0)/gyi
 
-# *** install script example ***
-#
-# depends pkag_name1 pkag_name2 ...
-# install dummy.sh
-# install dummy.conf /etc
-# install_lines .shrc <<END
-#     export PATH=\$PATH:/dummy/path
-# END
+depends yk_support_for_sh
 
+install zsh_rb /bin
+install zsh_rb.zsh /lib/yk_support_for_zsh
