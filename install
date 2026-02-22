@@ -1,0 +1,13 @@
+#!/bin/env bash
+
+. $(dirname $0)/gyi
+
+# *** install script example ***
+#
+# depends pkag_name1 pkag_name2 ...
+# install dummy.sh
+# install dummy.conf /etc
+# install_lines .shrc <<END
+#     export PATH=\$PATH:/dummy/path
+# END
+
